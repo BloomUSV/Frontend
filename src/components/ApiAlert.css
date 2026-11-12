@@ -1,0 +1,20 @@
+.api-alert {
+  margin: 12px 0;
+  padding: 11px 13px;
+  border: 1px solid;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.api-alert.error {
+  border-color: #efcaca;
+  background: #fff1f1;
+  color: #a63c3c;
+}
+
+.api-alert.info {
+  border-color: #c9e6e3;
+  background: #eff9f8;
+  color: #176f70;
+}

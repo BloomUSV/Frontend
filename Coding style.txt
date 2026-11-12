@@ -1,0 +1,73 @@
+Coding style frontend
+
+Limbaj: JavaScript (React + Vite)
+Ghid ales: Google JavaScript Style Guide:  
+
+Reguli principale adoptate de echipă
+
+    Indentare, linie, ;, ghilimele, const/let, acolade: aceleași reguli ca în backend (2 spații, 80 de caractere, apostrof simplu, const implicit).
+
+    Componente: doar componente funcționale cu hook-uri, fără componente de tip clasă.
+
+    Denumiri:
+
+        componente: UpperCamelCase, fișierul poartă același nume (ex. ResourceCard.jsx)
+
+        variabile, funcții, hook-uri: lowerCamelCase; hook-urile proprii încep cu use (ex. useAuth)
+
+        constante: CONSTANT_CASE (ex. API_BASE_URL)
+
+        handler-e de evenimente: prefix handle (ex. handleSubmit), iar prop-urile de tip callback prefix on (ex. onSelect)
+
+    Structura pe module: pages/, components/, services/ (apeluri Axios), context/ (autentificare și rol), routes/ (rute publice și protejate).
+
+    Un singur punct de acces la API: toate cererile HTTP trec prin services/, nu direct din componente. Tokenul JWT este atașat în antetul Authorization printr-un interceptor Axios.
+
+    Formulare: validare cu React Hook Form, mesajele de eroare apar lângă câmp.
+
+    Interfață: componentele de bază vin din Material UI; stilurile personalizate folosesc tema MUI, nu CSS împrăștiat prin componente. Culorile și spațierile se iau din tokenurile extrase din Figma.
+
+    Erori: apelurile către backend sunt în try/catch, iar utilizatorul vede un mesaj clar, nu o pagină goală.
+
+    Comentarii: JSDoc pentru componentele și funcțiile nebanale.
+
+    Limba în cod: denumiri și comentarii în engleză, texte din interfață în română (conform prototipului Figma).
+
+Instrumente (recomandat)
+
+    ESLint (configurația Google + plugin-ul react-hooks) pentru verificarea stilului
+
+    Prettier pentru formatare automată
+
+Stil backend
+
+    Limbaj/platformă: JavaScript pe Node.js, cu Express și Sequelize pentru
+    PostgreSQL.
+
+    Formatare și denumiri: aceleași reguli de bază ca în frontend — 2 spații,
+    maximum 80 de caractere pe linie unde este practic, apostrof simplu,
+    punct și virgulă la final, const implicit, camelCase pentru variabile și
+    funcții și UpperCamelCase pentru clase.
+
+    Arhitectură: routes/ pentru endpoint-uri, middleware/ pentru autentificare,
+    autorizare și validare, controllers/ pentru transportul HTTP,
+    services/ pentru logica de business și models/ pentru entitățile Sequelize.
+    Nu pune interogări sau reguli de business în rute.
+
+    Date și contract: modelele Sequelize mapează convenția camelCase la
+    coloanele snake_case existente. Nu modifica schema sau contractul OpenAPI
+    fără o incompatibilitate concretă și documentată.
+
+    Validare și erori: validează intrările pe server cu express-validator,
+    folosește coduri HTTP și mesaje API explicite și nu expune detalii interne
+    ale erorilor.
+
+    Securitate: parolele se stochează numai ca hash bcrypt; JWT-urile sunt
+    verificate prin middleware, iar operațiile secrete sunt autorizate după rol.
+    Configurația și secretele se citesc din variabile de mediu.
+
+    Testare: testează serviciile și endpoint-urile, inclusiv autorizarea,
+    validarea, resursele inexistente și conflictele cu rezervările.
+
+    Comentarii: JSDoc pentru componentele și funcțiile nebanale; identificatorii
+    și comentariile sunt în engleză, iar textele interfeței în română.

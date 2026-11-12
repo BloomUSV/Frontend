@@ -1,0 +1,10 @@
+{
+  "description": "Ajută echipele universitare să găsească și să rezerve echipamente, laboratoare și resurse HPC fără suprapuneri, cu instrumente de administrare și notificări.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
