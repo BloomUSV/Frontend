@@ -3,7 +3,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { useResourceList } from './hooks/useResourceList';
 import { getApiErrorMessage } from './services/apiError';
 import { getResource } from './services/resourceService';
-import type { Resource, ResourceType } from './types/resource';
+import type { AuthUser, Resource, ResourceType } from './types/resource';
 import './components/ApiAlert.css';
 
 const ResourceManagement = lazy(
@@ -169,7 +169,12 @@ function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
   );
 }
 
-const nav: { page: Page; label: string; icon: IconName }[] = [
+const nav: {
+  page: Page;
+  label: string;
+  icon: IconName;
+  roles?: AuthUser['role'][];
+}[] = [
   { page: 'dashboard', label: 'Panou principal', icon: 'grid' },
   { page: 'catalog', label: 'Catalog resurse', icon: 'box' },
   { page: 'calendar', label: 'Calendar disponibilitate', icon: 'calendar' },
@@ -178,7 +183,12 @@ const nav: { page: Page; label: string; icon: IconName }[] = [
   { page: 'notifications', label: 'Notificări', icon: 'bell' },
   { page: 'rules', label: 'Reguli de utilizare', icon: 'book' },
   { page: 'feedback', label: 'Feedback', icon: 'message' },
-  { page: 'admin', label: 'Administrare', icon: 'shield' },
+  {
+    page: 'admin',
+    label: 'Administrare',
+    icon: 'shield',
+    roles: ['manager', 'administrator'],
+  },
 ];
 
 function Badge({
@@ -310,10 +320,12 @@ function Dashboard({
   go,
   onBook,
   onSelectResource,
+  role,
 }: {
   go: (p: Page) => void;
   onBook: () => void;
   onSelectResource: (resourceId: string) => void;
+  role: AuthUser['role'];
 }) {
   const { resources, pagination, loading, error } = useResourceList({
     pageSize: 100,
@@ -330,6 +342,10 @@ function Dashboard({
     ['Cereri în așteptare', '3', 'Necesită aprobare', 'clock', 'amber'],
     ['Ore utilizate', '32h', 'În ultimele 30 zile', 'grid', 'purple'],
   ] as const;
+  const visibleStats =
+    role === 'user'
+      ? stats.filter((stat) => stat[0] !== 'Cereri în așteptare')
+      : stats;
   return (
     <>
       <Header
@@ -340,7 +356,7 @@ function Dashboard({
       <main className="content">
         {error && <ApiAlert>{error}</ApiAlert>}
         <section className="stats">
-          {stats.map((stat) => (
+          {visibleStats.map((stat) => (
             <div className="stat" key={stat[0]}>
               <div className={`stat-icon ${stat[4]}`}>
                 <Icon name={stat[3]} />
@@ -1190,25 +1206,37 @@ function Feedback({ onBook }: { onBook: () => void }) {
 function SimplePage({
   id,
   onBook,
+  role,
 }: {
   id: keyof typeof simplePages;
   onBook: () => void;
+  role: AuthUser['role'];
 }) {
   const p = simplePages[id];
+  const isAdministrator = role === 'administrator';
+  const title =
+    id === 'admin' && !isAdministrator ? 'Gestionarea resurselor' : p.title;
+  const subtitle =
+    id === 'admin' && !isAdministrator
+      ? 'Administrează resursele și disponibilitatea acestora.'
+      : p.subtitle;
   return (
     <>
-      <Header title={p.title} subtitle={p.subtitle} onBook={onBook} />
+      <Header title={title} subtitle={subtitle} onBook={onBook} />
       <main className="content simple-content">
         {id === 'admin' && (
-          <Suspense
-            fallback={
-              <p role="status">Se încarcă administrarea resurselor...</p>
-            }
-          >
-            <ResourceManagement />
-          </Suspense>
+          <>
+            {isAdministrator && p.content}
+            <Suspense
+              fallback={
+                <p role="status">Se încarcă administrarea resurselor...</p>
+              }
+            >
+              <ResourceManagement />
+            </Suspense>
+          </>
         )}
-        {p.content}
+        {id !== 'admin' && p.content}
       </main>
     </>
   );
@@ -1483,10 +1511,17 @@ function Application() {
   const [selectedResourceId, setSelectedResourceId] = useState<string | null>(
     null,
   );
-  const title = useMemo(
-    () => nav.find((n) => n.page === page)?.label || 'Resurse',
-    [page],
-  );
+  const currentPage =
+    page === 'admin' && !['manager', 'administrator'].includes(user?.role ?? '')
+      ? 'dashboard'
+      : page;
+  const title = useMemo(() => {
+    if (currentPage === 'admin' && user?.role === 'manager') {
+      return 'Gestionarea resurselor';
+    }
+
+    return nav.find((item) => item.page === currentPage)?.label || 'Resurse';
+  }, [currentPage, user?.role]);
   if (isLoading) {
     return (
       <div className="auth-loading" role="status">
@@ -1506,8 +1541,13 @@ function Application() {
     );
   }
 
-  const isManager = user.role === 'manager' || user.role === 'administrator';
-  const visibleNav = nav.filter((n) => n.page !== 'admin' || isManager);
+  const visibleNav = nav
+    .filter((item) => !item.roles || item.roles.includes(user.role))
+    .map((item) =>
+      item.page === 'admin' && user.role === 'manager'
+        ? { ...item, label: 'Gestionarea resurselor' }
+        : item,
+    );
   const handleSelectResource = (resourceId: string) => {
     setSelectedResourceId(resourceId);
     setPage('detail');
@@ -1536,7 +1576,7 @@ function Application() {
           {visibleNav.map((n) => (
             <button
               key={n.page}
-              className={page === n.page ? 'active' : ''}
+              className={currentPage === n.page ? 'active' : ''}
               onClick={() => setPage(n.page)}
             >
               <Icon name={n.icon} />
@@ -1570,39 +1610,43 @@ function Application() {
         </div>
       </aside>
       <div className="main-view" aria-label={title}>
-        {page === 'dashboard' && (
+        {currentPage === 'dashboard' && (
           <Dashboard
             go={setPage}
             onBook={() => setBooking(true)}
             onSelectResource={handleSelectResource}
+            role={user.role}
           />
         )}{' '}
-        {page === 'catalog' && (
+        {currentPage === 'catalog' && (
           <Catalog
             onBook={() => setBooking(true)}
             onSelectResource={handleSelectResource}
           />
         )}{' '}
-        {page === 'detail' && (
+        {currentPage === 'detail' && (
           <Detail
             resourceId={selectedResourceId}
             go={setPage}
             onBook={() => setBooking(true)}
           />
         )}{' '}
-        {page === 'calendar' && (
+        {currentPage === 'calendar' && (
           <CalendarPage onBook={() => setBooking(true)} />
         )}{' '}
-        {page === 'bookings' && (
+        {currentPage === 'bookings' && (
           <Reservations onBook={() => setBooking(true)} />
         )}{' '}
-        {page === 'feedback' && <Feedback onBook={() => setBooking(true)} />}{' '}
+        {currentPage === 'feedback' && (
+          <Feedback onBook={() => setBooking(true)} />
+        )}{' '}
         {(['waitlist', 'notifications', 'rules', 'admin'] as const).includes(
-          page as never,
+          currentPage as never,
         ) && (
           <SimplePage
-            id={page as keyof typeof simplePages}
+            id={currentPage as keyof typeof simplePages}
             onBook={() => setBooking(true)}
+            role={user.role}
           />
         )}
       </div>
