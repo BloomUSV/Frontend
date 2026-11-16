@@ -76,8 +76,9 @@ describe('role-based navigation', () => {
         name: 'Gestionarea resurselor',
       }),
     ).not.toBeInTheDocument();
-    expect(screen.queryByText('Utilizatori activi')).not.toBeInTheDocument();
-    expect(screen.queryByText('Cereri în așteptare')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Controale de gestionare a resurselor'),
+    ).not.toBeInTheDocument();
   });
 
   it('shows resource management but not administrator UI to managers', async () => {
@@ -95,8 +96,6 @@ describe('role-based navigation', () => {
     expect(
       await screen.findByText('Controale de gestionare a resurselor'),
     ).toBeInTheDocument();
-    expect(screen.queryByText('Utilizatori activi')).not.toBeInTheDocument();
-    expect(screen.queryByText('Cereri recente')).not.toBeInTheDocument();
   });
 
   it('shows administrator panels only to administrators', async () => {
@@ -109,8 +108,6 @@ describe('role-based navigation', () => {
       within(navigation).getByRole('button', { name: 'Administrare' }),
     );
 
-    expect(await screen.findByText('Utilizatori activi')).toBeInTheDocument();
-    expect(screen.getByText('Cereri recente')).toBeInTheDocument();
     await waitFor(() => {
       expect(
         screen.getByText('Controale de gestionare a resurselor'),

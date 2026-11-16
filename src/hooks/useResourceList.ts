@@ -20,7 +20,11 @@ const EMPTY_RESULT: ResourceListResponse = {
 };
 
 /** Fetches a cancellable, paginated resource list for a screen. */
-export function useResourceList(query: ResourceQuery = {}, archived = false) {
+export function useResourceList(
+  query: ResourceQuery = {},
+  archived = false,
+  enabled = true,
+) {
   const queryKey = JSON.stringify(query);
 
   const stableQuery = useMemo(
@@ -31,13 +35,19 @@ export function useResourceList(query: ResourceQuery = {}, archived = false) {
 
   const [result, setResult] = useState(EMPTY_RESULT);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
 
   const [error, setError] = useState<string | null>(null);
 
   const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
+    if (!enabled) {
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     const controller = new AbortController();
 
     setLoading(true);
@@ -69,7 +79,7 @@ export function useResourceList(query: ResourceQuery = {}, archived = false) {
       });
 
     return () => controller.abort();
-  }, [archived, stableQuery, reloadToken]);
+  }, [archived, enabled, stableQuery, reloadToken]);
 
   return {
     resources: result.data as Resource[],
