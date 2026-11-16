@@ -4,6 +4,8 @@ import { useResourceList } from './hooks/useResourceList';
 import { getApiErrorMessage } from './services/apiError';
 import { getResource } from './services/resourceService';
 import type { AuthUser, Resource, ResourceType } from './types/resource';
+import Calendar from './components/Calendar';
+import { setCalendarResources } from './components/Calendar';
 import './components/ApiAlert.css';
 
 const ResourceManagement = lazy(
@@ -725,104 +727,6 @@ function Detail({
   );
 }
 
-function CalendarPage({
-  onBook,
-  onSelectResource,
-}: {
-  onBook: () => void;
-  onSelectResource: (resourceId: string) => void;
-}) {
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const rangeValid = Boolean(from && to && from < to);
-  const today = new Date().toISOString().slice(0, 10);
-  const { resources, pagination, loading, error } = useResourceList(
-    rangeValid
-      ? {
-          availableFrom: new Date(`${from}T00:00:00`).toISOString(),
-          availableTo: new Date(`${to}T23:59:59`).toISOString(),
-          pageSize: 12,
-        }
-      : {},
-    false,
-    rangeValid,
-  );
-
-  return (
-    <>
-      <Header
-        title="Calendar disponibilitate"
-        subtitle="Verifică resursele disponibile într-un interval de timp."
-        onBook={onBook}
-      />
-      <main className="content">
-        <div className="panel">
-          <div className="panel-head">
-            <div>
-              <h2>Interval dorit</h2>
-              <p>Selectează data de început și data de sfârșit.</p>
-            </div>
-          </div>
-          <div className="availability-tools">
-            <label>
-              De la
-              <input
-                type="date"
-                min={today}
-                value={from}
-                onChange={(event) => setFrom(event.target.value)}
-              />
-            </label>
-            <label>
-              Până la
-              <input
-                type="date"
-                min={from || today}
-                value={to}
-                onChange={(event) => setTo(event.target.value)}
-              />
-            </label>
-          </div>
-        </div>
-        <div className="results-head">
-          <span>
-            {rangeValid ? (
-              <>
-                <strong>{pagination.totalItems}</strong> resurse disponibile
-              </>
-            ) : (
-              'Selectează un interval pentru a vedea disponibilitatea'
-            )}
-          </span>
-        </div>
-        {error && <ApiAlert>{error}</ApiAlert>}
-        {!rangeValid ? (
-          <div className="panel resource-empty">
-            <p>Alege un interval valid pentru a verifica disponibilitatea.</p>
-          </div>
-        ) : loading ? (
-          <p role="status">Se încarcă resursele disponibile...</p>
-        ) : resources.length === 0 ? (
-          <div className="panel resource-empty">
-            <p>Nu există resurse disponibile în intervalul selectat.</p>
-          </div>
-        ) : (
-          <div className="resource-grid">
-            {resources.map((resource) => (
-              <ResourceCard
-                key={resource.id}
-                item={resource}
-                onOpen={() => onSelectResource(resource.id)}
-                onBook={onBook}
-              />
-            ))}
-          </div>
-        )}
-      </main>
-    </>
-  );
-}
-
 const simplePages: Record<
   string,
   {
@@ -1003,13 +907,33 @@ function SimplePage({
   );
 }
 
-function BookingModal({ close }: { close: () => void }) {
+function BookingModal({
+  close,
+  preset,
+}: {
+  close: () => void;
+  preset: {
+    resourceId: string;
+    startsAt: string;
+    endsAt: string;
+  } | null;
+}) {
   const [submitted, setSubmitted] = useState(false);
   const { resources, loading, error } = useResourceList({ pageSize: 100 });
+  const [resourceId, setResourceId] = useState(preset?.resourceId ?? '');
+  const [startsAt, setStartsAt] = useState(preset?.startsAt ?? '');
+  const [endsAt, setEndsAt] = useState(preset?.endsAt ?? '');
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitted(true);
   };
+  useEffect(() => {
+    if (preset) {
+      setResourceId(preset.resourceId);
+      setStartsAt(preset.startsAt);
+      setEndsAt(preset.endsAt);
+    }
+  }, [preset]);
   return (
     <div
       className="modal-backdrop"
@@ -1041,7 +965,13 @@ function BookingModal({ close }: { close: () => void }) {
             <form onSubmit={submit}>
               <label>
                 Resursă
-                <select required disabled={loading || Boolean(error)}>
+                <select
+                  required
+                  disabled={loading || Boolean(error)}
+                  value={resourceId}
+                  onChange={(e) => setResourceId(e.target.value)}
+                >
+                  <option value="">Selectează o resursă</option>
                   {resources.map((resource) => (
                     <option key={resource.id} value={resource.id}>
                       {resource.name}
@@ -1063,15 +993,31 @@ function BookingModal({ close }: { close: () => void }) {
                     type="date"
                     required
                     min={new Date().toISOString().slice(0, 10)}
+                    value={startsAt.slice(0, 10)}
+                    onChange={(e) => {
+                      const date = e.target.value;
+                      setStartsAt(`${date}T${startsAt.slice(11, 16)}`);
+                      setEndsAt(`${date}T${endsAt.slice(11, 16)}`);
+                    }}
                   />
                 </label>
                 <label>
                   Ora de început
-                  <input type="time" required />
+                  <input
+                    type="time"
+                    required
+                    value={startsAt.slice(11, 16)}
+                    onChange={(e) => setStartsAt(`${startsAt.slice(0, 10)}T${e.target.value}`)}
+                  />
                 </label>
                 <label>
                   Ora de sfârșit
-                  <input type="time" required />
+                  <input
+                    type="time"
+                    required
+                    value={endsAt.slice(11, 16)}
+                    onChange={(e) => setEndsAt(`${endsAt.slice(0, 10)}T${e.target.value}`)}
+                  />
                 </label>
               </div>
               <label>
@@ -1221,6 +1167,15 @@ function Application() {
   const { user, isLoading, error, login, logout } = useAuth();
   const [page, setPage] = useState<Page>('dashboard');
   const [booking, setBooking] = useState(false);
+  const [bookingPreset, setBookingPreset] = useState<{
+    resourceId: string;
+    startsAt: string;
+    endsAt: string;
+  } | null>(null);
+  const { resources: calendarResources } = useResourceList({ pageSize: 100 });
+  useEffect(() => {
+    setCalendarResources(calendarResources);
+  }, [calendarResources]);
   const [selectedResourceId, setSelectedResourceId] = useState<string | null>(
     null,
   );
@@ -1343,9 +1298,13 @@ function Application() {
           />
         )}{' '}
         {currentPage === 'calendar' && (
-          <CalendarPage
-            onBook={() => setBooking(true)}
+          <Calendar
+            onBook={(preset) => {
+              setBookingPreset(preset ?? null);
+              setBooking(true);
+            }}
             onSelectResource={handleSelectResource}
+            userRole={user.role}
           />
         )}{' '}
         {currentPage === 'bookings' && (
@@ -1364,7 +1323,7 @@ function Application() {
           />
         )}
       </div>
-      {booking && <BookingModal close={() => setBooking(false)} />}
+      {booking && <BookingModal close={() => setBooking(false)} preset={bookingPreset} />}
     </div>
   );
 }

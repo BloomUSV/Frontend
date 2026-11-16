@@ -91,3 +91,74 @@ export type ApiErrorResponse = {
 
   details?: { field: string; message: string }[];
 };
+
+export type CalendarEventType = 'reservation' | 'maintenance';
+
+export type CalendarEvent = {
+  id: string;
+
+  resourceId: string;
+
+  resourceName: string;
+
+  reservationId: string | null;
+
+  maintenanceBlockId: string | null;
+
+  startsAt: string;
+
+  endsAt: string;
+
+  status: ReservationState | 'maintenance';
+
+  type: CalendarEventType;
+
+  title: string;
+
+  reason: string | null;
+};
+
+export type ReservationState =
+  | 'pending'
+  | 'confirmed'
+  | 'in_progress'
+  | 'completed'
+  | 'cancelled'
+  | 'rejected'
+  | 'expired';
+
+export type MaintenanceBlock = {
+  id: string;
+
+  resourceId: string;
+
+  startsAt: string;
+
+  endsAt: string;
+
+  reason: string;
+
+  createdBy: string | null;
+
+  createdAt: string;
+};
+
+export type MaintenanceBlockInput = {
+  resourceId: string;
+
+  startsAt: string;
+
+  endsAt: string;
+
+  reason: string;
+};
+
+export type CalendarView = 'day' | 'week' | 'month';
+
+export type TimeSlot = {
+  label: string;
+
+  start: Date;
+
+  end: Date;
+};
