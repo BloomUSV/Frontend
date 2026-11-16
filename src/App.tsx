@@ -238,7 +238,6 @@ function Header({
       <div className="header-actions">
         <button className="icon-button" aria-label="Notificări">
           <Icon name="bell" />
-          <b>3</b>
         </button>
         <button className="primary" onClick={onBook}>
           <Icon name="plus" /> Rezervare nouă
@@ -320,32 +319,67 @@ function Dashboard({
   go,
   onBook,
   onSelectResource,
-  role,
 }: {
   go: (p: Page) => void;
   onBook: () => void;
   onSelectResource: (resourceId: string) => void;
-  role: AuthUser['role'];
 }) {
   const { resources, pagination, loading, error } = useResourceList({
     pageSize: 100,
+  });
+  const availableResources = useResourceList({
+    state: 'available',
+    pageSize: 1,
+  });
+  const maintenanceResources = useResourceList({
+    state: 'maintenance',
+    pageSize: 1,
+  });
+  const unavailableResources = useResourceList({
+    state: 'unavailable',
+    pageSize: 1,
   });
   const stats = [
     [
       'Resurse active',
       loading ? '…' : String(pagination.totalItems),
-      'Disponibile în catalog',
+      'Înregistrate în catalog',
       'box',
       'teal',
     ],
-    ['Rezervări viitoare', '6', 'Următoarea: mâine', 'calendar', 'navy'],
-    ['Cereri în așteptare', '3', 'Necesită aprobare', 'clock', 'amber'],
-    ['Ore utilizate', '32h', 'În ultimele 30 zile', 'grid', 'purple'],
+    [
+      'Resurse disponibile',
+      availableResources.loading
+        ? '…'
+        : String(availableResources.pagination.totalItems),
+      'Pot fi rezervate',
+      'check',
+      'navy',
+    ],
+    [
+      'În mentenanță',
+      maintenanceResources.loading
+        ? '…'
+        : String(maintenanceResources.pagination.totalItems),
+      'Temporar indisponibile',
+      'clock',
+      'amber',
+    ],
+    [
+      'Indisponibile',
+      unavailableResources.loading
+        ? '…'
+        : String(unavailableResources.pagination.totalItems),
+      'Nu pot fi rezervate',
+      'close',
+      'purple',
+    ],
   ] as const;
-  const visibleStats =
-    role === 'user'
-      ? stats.filter((stat) => stat[0] !== 'Cereri în așteptare')
-      : stats;
+  const statsError =
+    error ||
+    availableResources.error ||
+    maintenanceResources.error ||
+    unavailableResources.error;
   return (
     <>
       <Header
@@ -354,9 +388,9 @@ function Dashboard({
         onBook={onBook}
       />
       <main className="content">
-        {error && <ApiAlert>{error}</ApiAlert>}
+        {statsError && <ApiAlert>{statsError}</ApiAlert>}
         <section className="stats">
-          {visibleStats.map((stat) => (
+          {stats.map((stat) => (
             <div className="stat" key={stat[0]}>
               <div className={`stat-icon ${stat[4]}`}>
                 <Icon name={stat[3]} />
@@ -366,77 +400,6 @@ function Dashboard({
               <small>{stat[2]}</small>
             </div>
           ))}
-        </section>
-        <section className="split">
-          <div className="panel">
-            <div className="panel-head">
-              <div>
-                <h2>Rezervări viitoare</h2>
-                <p>Programul tău pentru următoarele zile</p>
-              </div>
-              <button className="text-button" onClick={() => go('bookings')}>
-                Vezi toate <Icon name="arrow" />
-              </button>
-            </div>
-            <div className="booking-list">
-              <BookingLine
-                date="18"
-                month="IUN"
-                title="Stație de lipit Weller WT 1010"
-                info="Mâine, 10:00 – 12:00"
-                location="Corp D, FabLab"
-                type="confirmed"
-              />
-              <BookingLine
-                date="20"
-                month="IUN"
-                title="Stație PC CAD/CAE Dell Precision"
-                info="Vineri, 09:00 – 11:30"
-                location="Corp D, Laborator D103"
-                type="pending"
-              />
-              <BookingLine
-                date="24"
-                month="IUN"
-                title="Banc electronic Keysight"
-                info="Marți, 14:00 – 16:00"
-                location="Corp D, Laborator D106"
-                type="confirmed"
-              />
-            </div>
-          </div>
-          <div className="panel activity">
-            <div className="panel-head">
-              <div>
-                <h2>Notificări recente</h2>
-                <p>Actualizări importante</p>
-              </div>
-              <button
-                className="text-button"
-                onClick={() => go('notifications')}
-              >
-                Vezi toate
-              </button>
-            </div>
-            <Notice
-              icon="check"
-              title="Rezervare confirmată"
-              text="Rezervarea stației de lipit Weller a fost aprobată."
-              time="Acum 18 min."
-            />
-            <Notice
-              icon="clock"
-              title="Cerere în curs de analiză"
-              text="Cererea pentru stația PC CAD/CAE a fost trimisă managerului."
-              time="Acum 2 ore"
-            />
-            <Notice
-              icon="bell"
-              title="Loc disponibil"
-              text="Ai avansat pe poziția 1 în lista pentru Cluster HPC."
-              time="Ieri, 16:42"
-            />
-          </div>
         </section>
         <section>
           <div className="section-title">
@@ -470,66 +433,20 @@ function Dashboard({
   );
 }
 
-function BookingLine({
-  date,
-  month,
-  title,
-  info,
-  location,
-  type,
-}: {
-  date: string;
-  month: string;
-  title: string;
-  info: string;
-  location: string;
-  type: string;
-}) {
-  return (
-    <div className="booking-row">
-      <div className="datebox">
-        <strong>{date}</strong>
-        <span>{month}</span>
-      </div>
-      <div className="booking-info">
-        <strong>{title}</strong>
-        <span>{info}</span>
-        <small>
-          <Icon name="pin" size={14} />
-          {location}
-        </small>
-      </div>
-      <Badge type={type}>
-        {type === 'confirmed' ? 'Confirmată' : 'În așteptare'}
-      </Badge>
-      <button className="more">
-        <Icon name="more" />
-      </button>
-    </div>
-  );
-}
-
-function Notice({
+function EmptyPanel({
   icon,
   title,
-  text,
-  time,
+  children,
 }: {
   icon: IconName;
   title: string;
-  text: string;
-  time: string;
+  children: React.ReactNode;
 }) {
   return (
-    <div className="notice">
-      <div className="notice-icon">
-        <Icon name={icon} />
-      </div>
-      <div>
-        <strong>{title}</strong>
-        <p>{text}</p>
-        <small>{time}</small>
-      </div>
+    <div className="panel empty-small">
+      <Icon name={icon} size={32} />
+      <h2>{title}</h2>
+      <p>{children}</p>
     </div>
   );
 }
@@ -808,92 +725,99 @@ function Detail({
   );
 }
 
-function CalendarPage({ onBook }: { onBook: () => void }) {
-  const hours = [
-    '08:00',
-    '09:00',
-    '10:00',
-    '11:00',
-    '12:00',
-    '13:00',
-    '14:00',
-    '15:00',
-    '16:00',
-    '17:00',
-  ];
+function CalendarPage({
+  onBook,
+  onSelectResource,
+}: {
+  onBook: () => void;
+  onSelectResource: (resourceId: string) => void;
+}) {
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const rangeValid = Boolean(from && to && from < to);
+  const today = new Date().toISOString().slice(0, 10);
+  const { resources, pagination, loading, error } = useResourceList(
+    rangeValid
+      ? {
+          availableFrom: new Date(`${from}T00:00:00`).toISOString(),
+          availableTo: new Date(`${to}T23:59:59`).toISOString(),
+          pageSize: 12,
+        }
+      : {},
+    false,
+    rangeValid,
+  );
+
   return (
     <>
       <Header
         title="Calendar disponibilitate"
-        subtitle="Vezi programul și disponibilitatea tuturor resurselor."
+        subtitle="Verifică resursele disponibile într-un interval de timp."
         onBook={onBook}
       />
       <main className="content">
-        <div className="calendar-tools">
-          <div className="cal-nav">
-            <button>‹</button>
-            <button>Astăzi</button>
-            <button>›</button>
-            <strong>16 – 22 iunie 2025</strong>
+        <div className="panel">
+          <div className="panel-head">
+            <div>
+              <h2>Interval dorit</h2>
+              <p>Selectează data de început și data de sfârșit.</p>
+            </div>
           </div>
-          <div className="view-toggle">
-            <button>Zi</button>
-            <button className="active">Săptămână</button>
-            <button>Lună</button>
+          <div className="availability-tools">
+            <label>
+              De la
+              <input
+                type="date"
+                min={today}
+                value={from}
+                onChange={(event) => setFrom(event.target.value)}
+              />
+            </label>
+            <label>
+              Până la
+              <input
+                type="date"
+                min={from || today}
+                value={to}
+                onChange={(event) => setTo(event.target.value)}
+              />
+            </label>
           </div>
         </div>
-        <div className="calendar-panel">
-          <div className="calendar-head">
-            <div>GMT+3</div>
-            {['LUN 16', 'MAR 17', 'MIE 18', 'JOI 19', 'VIN 20'].map((d, i) => (
-              <div className={i === 2 ? 'active' : ''} key={d}>
-                <span>{d.split(' ')[0]}</span>
-                <strong>{d.split(' ')[1]}</strong>
-              </div>
+        <div className="results-head">
+          <span>
+            {rangeValid ? (
+              <>
+                <strong>{pagination.totalItems}</strong> resurse disponibile
+              </>
+            ) : (
+              'Selectează un interval pentru a vedea disponibilitatea'
+            )}
+          </span>
+        </div>
+        {error && <ApiAlert>{error}</ApiAlert>}
+        {!rangeValid ? (
+          <div className="panel resource-empty">
+            <p>Alege un interval valid pentru a verifica disponibilitatea.</p>
+          </div>
+        ) : loading ? (
+          <p role="status">Se încarcă resursele disponibile...</p>
+        ) : resources.length === 0 ? (
+          <div className="panel resource-empty">
+            <p>Nu există resurse disponibile în intervalul selectat.</p>
+          </div>
+        ) : (
+          <div className="resource-grid">
+            {resources.map((resource) => (
+              <ResourceCard
+                key={resource.id}
+                item={resource}
+                onOpen={() => onSelectResource(resource.id)}
+                onBook={onBook}
+              />
             ))}
           </div>
-          <div className="calendar-body">
-            <div className="hours">
-              {hours.map((h) => (
-                <span key={h}>{h}</span>
-              ))}
-            </div>
-            <div className="day-col">
-              <div className="event teal e1">
-                <strong>Stație de lipit Weller</strong>
-                <span>09:00–11:00</span>
-              </div>
-            </div>
-            <div className="day-col">
-              <div className="event navy e2">
-                <strong>PC CAD/CAE Dell</strong>
-                <span>10:00–13:00</span>
-              </div>
-            </div>
-            <div className="day-col today">
-              <div className="now" />
-              <div className="event amber e3">
-                <strong>Banc electronic Keysight</strong>
-                <span>09:00–11:30</span>
-              </div>
-              <button className="open-slot" onClick={onBook}>
-                + Interval liber
-              </button>
-            </div>
-            <div className="day-col">
-              <div className="event purple e4">
-                <strong>Sala Atlas</strong>
-                <span>13:00–15:00</span>
-              </div>
-            </div>
-            <div className="day-col">
-              <div className="event teal e5">
-                <strong>Cluster HPC</strong>
-                <span>11:00–16:00</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        )}
       </main>
     </>
   );
@@ -911,55 +835,18 @@ const simplePages: Record<
     title: 'Lista de așteptare',
     subtitle: 'Urmărește poziția ta și preferințele de notificare.',
     content: (
-      <>
-        <div className="panel wait-card">
-          <div className="queue">1</div>
-          <div>
-            <Badge type="success">Prima poziție</Badge>
-            <h2>Cluster HPC „Ștefan”</h2>
-            <p>Interval dorit: 25–27 iunie · 16 noduri GPU</p>
-          </div>
-          <button className="outline">Modifică preferințele</button>
-        </div>
-        <div className="panel empty-small">
-          <Icon name="bell" size={32} />
-          <h2>Notificare instant activată</h2>
-          <p>
-            Vei primi o notificare în aplicație și prin e-mail când intervalul
-            devine disponibil.
-          </p>
-        </div>
-      </>
+      <EmptyPanel icon="users" title="Nu există înregistrări">
+        Poziția ta în lista de așteptare va apărea aici.
+      </EmptyPanel>
     ),
   },
   notifications: {
     title: 'Notificări',
     subtitle: 'Toate actualizările despre rezervările și resursele tale.',
     content: (
-      <div className="panel">
-        <div className="panel-head">
-          <h2>Actualizări recente</h2>
-          <button className="text-button">Marchează toate ca citite</button>
-        </div>
-        <Notice
-          icon="check"
-          title="Rezervare confirmată"
-          text="Robot colaborativ UR10e · 18 iunie, 10:00–12:00"
-          time="Acum 18 minute"
-        />
-        <Notice
-          icon="clock"
-          title="Cerere trimisă managerului"
-          text="Microscop electronic SEM · 20 iunie, 09:00–11:30"
-          time="Acum 2 ore"
-        />
-        <Notice
-          icon="bell"
-          title="Ai avansat în lista de așteptare"
-          text="Acum ești pe poziția 1 pentru Cluster HPC „Ștefan”."
-          time="Ieri, 16:42"
-        />
-      </div>
+      <EmptyPanel icon="bell" title="Nu există notificări">
+        Actualizările despre rezervările și resursele tale vor apărea aici.
+      </EmptyPanel>
     ),
   },
   rules: {
@@ -988,45 +875,11 @@ const simplePages: Record<
   admin: {
     title: 'Administrare',
     subtitle: 'Gestionează utilizatorii, resursele și regulile platformei.',
-    content: (
-      <>
-        <section className="stats admin-stats">
-          <div className="stat">
-            <span>Utilizatori activi</span>
-            <strong>284</strong>
-            <small>18 manageri</small>
-          </div>
-          <div className="stat">
-            <span>Aprobări</span>
-            <strong>12</strong>
-            <small>Necesită acțiune</small>
-          </div>
-        </section>
-        <div className="panel">
-          <div className="panel-head">
-            <h2>Cereri recente</h2>
-            <button className="primary">Gestionează aprobările</button>
-          </div>
-          {[
-            'Elena Popescu — Microscop electronic SEM',
-            'Victor Stan — Laborator Biotehnologii',
-            'Ioana Mureșan — Cluster HPC „Ștefan”',
-          ].map((x, i) => (
-            <div className="admin-row" key={x}>
-              <div className="avatar">{x[0]}</div>
-              <strong>{x}</strong>
-              <Badge type={i === 1 ? 'warning' : 'pending'}>În așteptare</Badge>
-              <button className="outline">Analizează</button>
-            </div>
-          ))}
-        </div>
-      </>
-    ),
+    content: null,
   },
 };
 
 function Reservations({ onBook }: { onBook: () => void }) {
-  const [cancel, setCancel] = useState(false);
   return (
     <>
       <Header
@@ -1035,94 +888,11 @@ function Reservations({ onBook }: { onBook: () => void }) {
         onBook={onBook}
       />
       <main className="content">
-        <div className="filter-row">
-          <button className="filter active">
-            Toate <span>6</span>
-          </button>
-          <button className="filter">
-            Confirmate <span>3</span>
-          </button>
-          <button className="filter">
-            În așteptare <span>2</span>
-          </button>
-          <button className="filter">
-            Respinse <span>1</span>
-          </button>
-        </div>
-        <div className="panel reservation-table">
-          <div className="table-head">
-            <span>RESURSĂ</span>
-            <span>DATA ȘI ORA</span>
-            <span>ECHIPĂ</span>
-            <span>STARE</span>
-            <span>ACȚIUNI</span>
-          </div>
-          <BookingTable
-            name="Stație de lipit Weller WT 1010"
-            icon="lab"
-            time="18 iun. · 10:00–12:00"
-            team="Robotică Aplicată"
-            status="Confirmată"
-            onCancel={() => setCancel(true)}
-          />
-          <BookingTable
-            name="Stație PC CAD/CAE Dell Precision"
-            icon="cpu"
-            time="20 iun. · 09:00–11:30"
-            team="Proiectare Mecanică"
-            status="În așteptare"
-            onCancel={() => setCancel(true)}
-          />
-          <BookingTable
-            name="Banc electronic Keysight"
-            icon="box"
-            time="24 iun. · 14:00–16:00"
-            team="Electronică Aplicată"
-            status="Confirmată"
-            onCancel={() => setCancel(true)}
-          />
-        </div>
+        <EmptyPanel icon="calendar" title="Nu există rezervări">
+          Rezervările tale vor apărea aici.
+        </EmptyPanel>
       </main>
-      {cancel && <ConfirmModal close={() => setCancel(false)} />}
     </>
-  );
-}
-
-function BookingTable({
-  name,
-  icon,
-  time,
-  team,
-  status,
-  onCancel,
-}: {
-  name: string;
-  icon: IconName;
-  time: string;
-  team: string;
-  status: string;
-  onCancel: () => void;
-}) {
-  return (
-    <div className="table-row">
-      <span className="resource-cell">
-        <i>
-          <Icon name={icon} />
-        </i>
-        <strong>{name}</strong>
-      </span>
-      <span>{time}</span>
-      <span>{team}</span>
-      <span>
-        <Badge type={status === 'Confirmată' ? 'confirmed' : 'pending'}>
-          {status}
-        </Badge>
-      </span>
-      <span className="actions">
-        <button>Editare</button>
-        <button onClick={onCancel}>Anulare</button>
-      </span>
-    </div>
   );
 }
 
@@ -1186,16 +956,7 @@ function Feedback({ onBook }: { onBook: () => void }) {
           </form>
           <div className="panel">
             <h2>Istoric feedback</h2>
-            <div className="history">
-              <Badge type="success">Rezolvat</Badge>
-              <strong>Calendarul este foarte ușor de folosit</strong>
-              <p>Trimis pe 2 iunie 2025</p>
-            </div>
-            <div className="history">
-              <Badge type="pending">În analiză</Badge>
-              <strong>Adăugare filtru după clădire</strong>
-              <p>Trimis pe 28 mai 2025</p>
-            </div>
+            <p>Nu există feedback înregistrat.</p>
           </div>
         </div>
       </main>
@@ -1244,11 +1005,9 @@ function SimplePage({
 
 function BookingModal({ close }: { close: () => void }) {
   const [submitted, setSubmitted] = useState(false);
-  const [conflict, setConflict] = useState(false);
   const { resources, loading, error } = useResourceList({ pageSize: 100 });
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (conflict) return;
     setSubmitted(true);
   };
   return (
@@ -1300,42 +1059,26 @@ function BookingModal({ close }: { close: () => void }) {
               <div className="form-grid">
                 <label>
                   Data
-                  <input type="date" defaultValue="2025-06-18" />
-                </label>
-                <label>
-                  Echipă
-                  <select>
-                    <option>Echipa RoboLab</option>
-                    <option>AI Research</option>
-                  </select>
-                </label>
-                <label>
-                  Ora de început
                   <input
-                    type="time"
-                    defaultValue="10:00"
-                    onChange={(e) => setConflict(e.target.value === '11:00')}
+                    type="date"
+                    required
+                    min={new Date().toISOString().slice(0, 10)}
                   />
                 </label>
                 <label>
+                  Ora de început
+                  <input type="time" required />
+                </label>
+                <label>
                   Ora de sfârșit
-                  <input type="time" defaultValue="12:00" />
+                  <input type="time" required />
                 </label>
               </div>
-              {conflict && (
-                <div className="conflict">
-                  <Icon name="bell" />
-                  <span>
-                    <strong>Interval indisponibil</strong>Există deja o
-                    rezervare între 11:00 și 13:00. Alege alt interval.
-                  </span>
-                </div>
-              )}
               <label>
                 Scopul utilizării
                 <textarea
                   rows={3}
-                  defaultValue="Testarea algoritmului de control adaptiv pentru manipulare colaborativă."
+                  placeholder="Descrie scopul sesiunii de cercetare..."
                 />
               </label>
               <div className="modal-actions">
@@ -1344,12 +1087,7 @@ function BookingModal({ close }: { close: () => void }) {
                 </button>
                 <button
                   className="primary"
-                  disabled={
-                    conflict ||
-                    loading ||
-                    Boolean(error) ||
-                    resources.length === 0
-                  }
+                  disabled={loading || Boolean(error) || resources.length === 0}
                 >
                   Trimite cererea
                 </button>
@@ -1357,31 +1095,6 @@ function BookingModal({ close }: { close: () => void }) {
             </form>
           </>
         )}
-      </div>
-    </div>
-  );
-}
-
-function ConfirmModal({ close }: { close: () => void }) {
-  return (
-    <div className="modal-backdrop">
-      <div className="modal confirm-modal">
-        <div className="danger-icon">
-          <Icon name="calendar" />
-        </div>
-        <h2>Anulezi rezervarea?</h2>
-        <p>
-          Intervalul va deveni disponibil pentru alte echipe. Această acțiune nu
-          poate fi anulată.
-        </p>
-        <div className="modal-actions">
-          <button className="outline" onClick={close}>
-            Păstrează rezervarea
-          </button>
-          <button className="danger" onClick={close}>
-            Da, anulează
-          </button>
-        </div>
       </div>
     </div>
   );
@@ -1581,7 +1294,6 @@ function Application() {
             >
               <Icon name={n.icon} />
               <span>{n.label}</span>
-              {n.page === 'notifications' && <b>3</b>}
             </button>
           ))}
         </nav>
@@ -1615,7 +1327,6 @@ function Application() {
             go={setPage}
             onBook={() => setBooking(true)}
             onSelectResource={handleSelectResource}
-            role={user.role}
           />
         )}{' '}
         {currentPage === 'catalog' && (
@@ -1632,7 +1343,10 @@ function Application() {
           />
         )}{' '}
         {currentPage === 'calendar' && (
-          <CalendarPage onBook={() => setBooking(true)} />
+          <CalendarPage
+            onBook={() => setBooking(true)}
+            onSelectResource={handleSelectResource}
+          />
         )}{' '}
         {currentPage === 'bookings' && (
           <Reservations onBook={() => setBooking(true)} />
