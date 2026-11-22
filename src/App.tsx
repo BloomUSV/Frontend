@@ -286,6 +286,29 @@ function Header({
   );
 }
 
+function getLocalDateTimeInputValue(value: Date) {
+  const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+function getCurrentDateTimeMinimum() {
+  const now = new Date();
+  const roundedNow = new Date(now);
+  roundedNow.setSeconds(0, 0);
+  if (roundedNow < now) {
+    roundedNow.setMinutes(roundedNow.getMinutes() + 1);
+  }
+  return getLocalDateTimeInputValue(roundedNow);
+}
+
+function getNextDateTimeInputValue(value: string) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return '';
+  date.setMinutes(date.getMinutes() + 1, 0, 0);
+  return getLocalDateTimeInputValue(date);
+}
+
 const RESOURCE_PRESENTATION: Record<
   ResourceType,
   {
@@ -862,6 +885,7 @@ function Reservations({
   const [editEnd, setEditEnd] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const minDateTime = getCurrentDateTimeMinimum();
   useEffect(() => {
     listReservations(role === 'user' ? 'own' : 'all')
       .then(setReservations)
@@ -960,6 +984,7 @@ function Reservations({
                   <input
                     required
                     type="datetime-local"
+                    min={minDateTime}
                     value={editStart}
                     onChange={(event) => setEditStart(event.target.value)}
                   />
@@ -969,6 +994,7 @@ function Reservations({
                   <input
                     required
                     type="datetime-local"
+                    min={getNextDateTimeInputValue(editStart) || minDateTime}
                     value={editEnd}
                     onChange={(event) => setEditEnd(event.target.value)}
                   />
@@ -1181,6 +1207,7 @@ function WaitlistPage({
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const minDateTime = getCurrentDateTimeMinimum();
   const { resources } = useResourceList({ pageSize: 100 });
   const refresh = () =>
     listWaitlist()
@@ -1261,6 +1288,7 @@ function WaitlistPage({
                 <input
                   required
                   type="datetime-local"
+                  min={minDateTime}
                   value={start}
                   onChange={(event) => setStart(event.target.value)}
                 />
@@ -1270,6 +1298,7 @@ function WaitlistPage({
                 <input
                   required
                   type="datetime-local"
+                  min={getNextDateTimeInputValue(start) || minDateTime}
                   value={end}
                   onChange={(event) => setEnd(event.target.value)}
                 />
@@ -1783,24 +1812,23 @@ function SimplePage({
   const subtitle =
     id === 'admin' && !isAdministrator
       ? 'Administrează resursele și disponibilitatea acestora.'
-      : p.subtitle;
+      : id === 'admin'
+        ? 'Gestionează resursele, utilizatorii și regulile platformei.'
+        : p.subtitle;
   return (
     <>
       <Header title={title} subtitle={subtitle} onBook={onBook} />
       <main className="content simple-content">
         {id === 'admin' && (
           <>
-            {isAdministrator ? (
-              p.content
-            ) : (
-              <Suspense
-                fallback={
-                  <p role="status">Se încarcă administrarea resurselor...</p>
-                }
-              >
-                <ResourceManagement />
-              </Suspense>
-            )}
+            {isAdministrator && p.content}
+            <Suspense
+              fallback={
+                <p role="status">Se încarcă administrarea resurselor...</p>
+              }
+            >
+              <ResourceManagement />
+            </Suspense>
           </>
         )}
         {id !== 'admin' &&
@@ -1824,6 +1852,7 @@ function BookingModal({
     endsAt: string;
   } | null;
 }) {
+  const minDateTime = getCurrentDateTimeMinimum();
   function toLocalInput(value: string) {
     if (!value) return '';
     const date = new Date(value);
@@ -1924,6 +1953,7 @@ function BookingModal({
                   <input
                     type="datetime-local"
                     required
+                    min={minDateTime}
                     value={startsAt}
                     onChange={(e) => setStartsAt(e.target.value)}
                   />
@@ -1933,6 +1963,7 @@ function BookingModal({
                   <input
                     type="datetime-local"
                     required
+                    min={getNextDateTimeInputValue(startsAt) || minDateTime}
                     value={endsAt}
                     onChange={(e) => setEndsAt(e.target.value)}
                   />

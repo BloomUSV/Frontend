@@ -92,7 +92,7 @@ const EMPTY_FORM: ResourceFormValues = {
   managerId: '',
 };
 
-/** Renders the manager-only create, edit, list, and archive controls. */
+/** Renders the manager/admin create, edit, list, and archive controls. */
 export default function ResourceManagement() {
   const [page, setPage] = useState(1);
   const [showArchived, setShowArchived] = useState(false);
