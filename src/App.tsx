@@ -3,6 +3,31 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { useResourceList } from './hooks/useResourceList';
 import { getApiErrorMessage } from './services/apiError';
 import { getResource } from './services/resourceService';
+import {
+  cancelReservation,
+  createReservation,
+  listReservations,
+  reviewReservation,
+  updateReservation,
+} from './services/reservationService';
+import {
+  createWaitlistEntry,
+  listWaitlist,
+  removeWaitlistEntry,
+} from './services/waitlistService';
+import {
+  listNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+} from './services/notificationService';
+import { createFeedback, listFeedback } from './services/feedbackService';
+import {
+  createRule,
+  deleteRule,
+  listRules,
+  updateRule,
+} from './services/ruleService';
+import { listUsers, updateUser } from './services/userService';
 import type { AuthUser, Resource, ResourceType } from './types/resource';
 import Calendar from './components/Calendar';
 import { setCalendarResources } from './components/Calendar';
@@ -181,10 +206,20 @@ const nav: {
   { page: 'catalog', label: 'Catalog resurse', icon: 'box' },
   { page: 'calendar', label: 'Calendar disponibilitate', icon: 'calendar' },
   { page: 'bookings', label: 'Rezervările mele', icon: 'clock' },
-  { page: 'waitlist', label: 'Lista de așteptare', icon: 'users' },
+  {
+    page: 'waitlist',
+    label: 'Lista de așteptare',
+    icon: 'users',
+    roles: ['user'],
+  },
   { page: 'notifications', label: 'Notificări', icon: 'bell' },
   { page: 'rules', label: 'Reguli de utilizare', icon: 'book' },
-  { page: 'feedback', label: 'Feedback', icon: 'message' },
+  {
+    page: 'feedback',
+    label: 'Feedback',
+    icon: 'message',
+    roles: ['user'],
+  },
   {
     page: 'admin',
     label: 'Administrare',
@@ -229,7 +264,7 @@ function Header({
 }: {
   title: string;
   subtitle?: string;
-  onBook: () => void;
+  onBook?: () => void;
 }) {
   return (
     <header className="topbar">
@@ -241,9 +276,11 @@ function Header({
         <button className="icon-button" aria-label="Notificări">
           <Icon name="bell" />
         </button>
-        <button className="primary" onClick={onBook}>
-          <Icon name="plus" /> Rezervare nouă
-        </button>
+        {onBook && (
+          <button className="primary" onClick={onBook}>
+            <Icon name="plus" /> Rezervare nouă
+          </button>
+        )}
       </div>
     </header>
   );
@@ -277,7 +314,7 @@ function ResourceCard({
 }: {
   item: Resource;
   onOpen: () => void;
-  onBook: () => void;
+  onBook?: () => void;
 }) {
   const presentation = RESOURCE_PRESENTATION[item.type];
   const status = RESOURCE_STATE_LABELS[item.state];
@@ -309,9 +346,11 @@ function ResourceCard({
             {status}
           </Badge>
         </div>
-        <button className="outline full" onClick={onBook}>
-          Verifică disponibilitatea <Icon name="arrow" />
-        </button>
+        {onBook && (
+          <button className="outline full" onClick={onBook}>
+            Verifică disponibilitatea <Icon name="arrow" />
+          </button>
+        )}
       </div>
     </article>
   );
@@ -323,7 +362,7 @@ function Dashboard({
   onSelectResource,
 }: {
   go: (p: Page) => void;
-  onBook: () => void;
+  onBook?: () => void;
   onSelectResource: (resourceId: string) => void;
 }) {
   const { resources, pagination, loading, error } = useResourceList({
@@ -457,7 +496,7 @@ function Catalog({
   onBook,
   onSelectResource,
 }: {
-  onBook: () => void;
+  onBook?: () => void;
   onSelectResource: (resourceId: string) => void;
 }) {
   const [query, setQuery] = useState('');
@@ -590,11 +629,14 @@ function Detail({
 }: {
   resourceId: string | null;
   go: (page: Page) => void;
-  onBook: () => void;
+  onBook?: () => void;
 }) {
   const [resource, setResource] = useState<Resource | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [rules, setRules] = useState<import('./types/resource').ResourceRule[]>(
+    [],
+  );
 
   useEffect(() => {
     let active = true;
@@ -632,6 +674,13 @@ function Detail({
     return () => {
       active = false;
     };
+  }, [resourceId]);
+
+  useEffect(() => {
+    if (!resourceId) return;
+    listRules(resourceId)
+      .then(setRules)
+      .catch(() => setRules([]));
   }, [resourceId]);
 
   return (
@@ -675,9 +724,11 @@ function Detail({
                     </span>
                   )}
                 </div>
-                <button className="primary" onClick={onBook}>
-                  <Icon name="calendar" /> Rezervă această resursă
-                </button>
+                {onBook && (
+                  <button className="primary" onClick={onBook}>
+                    <Icon name="calendar" /> Rezervă această resursă
+                  </button>
+                )}
               </div>
             </div>
             <div className="detail-columns">
@@ -700,6 +751,19 @@ function Detail({
                       ),
                     )}
                   </div>
+                )}
+              </section>
+              <section className="panel">
+                <h2>Reguli pentru această resursă</h2>
+                {rules.length === 0 ? (
+                  <p>Nu există reguli suplimentare pentru această resursă.</p>
+                ) : (
+                  rules.map((rule) => (
+                    <div key={rule.id}>
+                      <strong>{rule.title}</strong>
+                      <p>{rule.content}</p>
+                    </div>
+                  ))
                 )}
               </section>
               <section className="panel availability">
@@ -779,11 +843,54 @@ const simplePages: Record<
   admin: {
     title: 'Administrare',
     subtitle: 'Gestionează utilizatorii, resursele și regulile platformei.',
-    content: null,
+    content: <UserAdministration />,
   },
 };
 
-function Reservations({ onBook }: { onBook: () => void }) {
+function Reservations({
+  onBook,
+  role,
+}: {
+  onBook: () => void;
+  role: AuthUser['role'];
+}) {
+  const [reservations, setReservations] = useState<
+    import('./types/resource').Reservation[]
+  >([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editStart, setEditStart] = useState('');
+  const [editEnd, setEditEnd] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    listReservations(role === 'user' ? 'own' : 'all')
+      .then(setReservations)
+      .catch((requestError) =>
+        setError(
+          getApiErrorMessage(requestError, 'Nu am putut încărca rezervările'),
+        ),
+      )
+      .finally(() => setLoading(false));
+  }, []);
+  async function cancel(id: string) {
+    try {
+      await cancelReservation(id);
+      setReservations((items) =>
+        items.map((item) =>
+          item.id === id ? { ...item, status: 'cancelled' } : item,
+        ),
+      );
+    } catch (requestError) {
+      setError(
+        getApiErrorMessage(requestError, 'Nu am putut anula rezervarea'),
+      );
+    }
+  }
+  function toLocalInput(value: string) {
+    const date = new Date(value);
+    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 16);
+  }
   return (
     <>
       <Header
@@ -792,9 +899,150 @@ function Reservations({ onBook }: { onBook: () => void }) {
         onBook={onBook}
       />
       <main className="content">
-        <EmptyPanel icon="calendar" title="Nu există rezervări">
-          Rezervările tale vor apărea aici.
-        </EmptyPanel>
+        {loading && <p role="status">Se încarcă rezervările...</p>}
+        {error && <ApiAlert>{error}</ApiAlert>}
+        {!loading && reservations.length === 0 && (
+          <EmptyPanel icon="calendar" title="Nu există rezervări">
+            Rezervările tale vor apărea aici.
+          </EmptyPanel>
+        )}
+        {reservations.map((reservation) => (
+          <div className="panel" key={reservation.id}>
+            <h2>{reservation.purpose || 'Rezervare resursă'}</h2>
+            <p>
+              {new Date(reservation.startsAt).toLocaleString('ro-RO')}
+              {' – '}
+              {new Date(reservation.endsAt).toLocaleString('ro-RO')}
+            </p>
+            <Badge type={reservation.status}>{reservation.status}</Badge>
+            {role === 'user' &&
+              ['pending', 'confirmed'].includes(reservation.status) &&
+              editingId !== reservation.id && (
+                <button
+                  className="outline"
+                  type="button"
+                  onClick={() => {
+                    setEditingId(reservation.id);
+                    setEditStart(toLocalInput(reservation.startsAt));
+                    setEditEnd(toLocalInput(reservation.endsAt));
+                  }}
+                >
+                  Modifică
+                </button>
+              )}
+            {editingId === reservation.id && (
+              <form
+                onSubmit={async (event) => {
+                  event.preventDefault();
+                  try {
+                    const updated = await updateReservation(reservation.id, {
+                      startsAt: new Date(editStart).toISOString(),
+                      endsAt: new Date(editEnd).toISOString(),
+                    });
+                    setReservations((items) =>
+                      items.map((item) =>
+                        item.id === reservation.id ? updated : item,
+                      ),
+                    );
+                    setEditingId(null);
+                  } catch (requestError) {
+                    setError(
+                      getApiErrorMessage(
+                        requestError,
+                        'Rezervarea nu a putut fi modificată',
+                      ),
+                    );
+                  }
+                }}
+              >
+                <label>
+                  Început
+                  <input
+                    required
+                    type="datetime-local"
+                    value={editStart}
+                    onChange={(event) => setEditStart(event.target.value)}
+                  />
+                </label>
+                <label>
+                  Sfârșit
+                  <input
+                    required
+                    type="datetime-local"
+                    value={editEnd}
+                    onChange={(event) => setEditEnd(event.target.value)}
+                  />
+                </label>
+                <button className="primary" type="submit">
+                  Salvează
+                </button>
+                <button
+                  className="outline"
+                  type="button"
+                  onClick={() => setEditingId(null)}
+                >
+                  Renunță
+                </button>
+              </form>
+            )}
+            {role === 'user' &&
+              ['pending', 'confirmed'].includes(reservation.status) && (
+                <button
+                  className="outline"
+                  type="button"
+                  onClick={() => cancel(reservation.id)}
+                >
+                  Anulează
+                </button>
+              )}
+            {role === 'manager' &&
+              ['pending', 'confirmed'].includes(reservation.status) && (
+                <button
+                  className="outline"
+                  type="button"
+                  onClick={() => cancel(reservation.id)}
+                >
+                  Anulează rezervarea
+                </button>
+              )}
+            {role === 'manager' && reservation.status === 'pending' && (
+              <>
+                <button
+                  className="primary"
+                  type="button"
+                  onClick={async () => {
+                    await reviewReservation(reservation.id, 'confirmed');
+                    setReservations((items) =>
+                      items.map((item) =>
+                        item.id === reservation.id
+                          ? { ...item, status: 'confirmed' }
+                          : item,
+                      ),
+                    );
+                  }}
+                >
+                  Confirmă
+                </button>
+                <button
+                  className="outline"
+                  type="button"
+                  onClick={async () => {
+                    await reviewReservation(reservation.id, 'rejected');
+                    setReservations((items) =>
+                      items.map((item) =>
+                        item.id === reservation.id
+                          ? { ...item, status: 'rejected' }
+                          : item,
+                      ),
+                    );
+                  }}
+                >
+                  Respinge
+                </button>
+              </>
+            )}
+          </div>
+        ))}
       </main>
     </>
   );
@@ -802,6 +1050,36 @@ function Reservations({ onBook }: { onBook: () => void }) {
 
 function Feedback({ onBook }: { onBook: () => void }) {
   const [sent, setSent] = useState(false);
+  const [rating, setRating] = useState(0);
+  const [resourceId, setResourceId] = useState('');
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<import('./types/resource').Feedback[]>(
+    [],
+  );
+  const { resources } = useResourceList({ pageSize: 100 });
+  useEffect(() => {
+    listFeedback()
+      .then(setHistory)
+      .catch((requestError) =>
+        setError(
+          getApiErrorMessage(requestError, 'Nu am putut încărca istoricul'),
+        ),
+      );
+  }, []);
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    try {
+      await createFeedback({ resourceId, rating, message });
+      setSent(true);
+      setHistory(await listFeedback());
+    } catch (requestError) {
+      setError(
+        getApiErrorMessage(requestError, 'Feedback-ul nu a putut fi trimis'),
+      );
+    }
+  };
   return (
     <>
       <Header
@@ -811,13 +1089,7 @@ function Feedback({ onBook }: { onBook: () => void }) {
       />
       <main className="content">
         <div className="detail-columns">
-          <form
-            className="panel feedback"
-            onSubmit={(e) => {
-              e.preventDefault();
-              setSent(true);
-            }}
-          >
+          <form className="panel feedback" onSubmit={submit}>
             <h2>Trimite feedback</h2>
             {sent ? (
               <div className="success-box">
@@ -828,18 +1100,30 @@ function Feedback({ onBook }: { onBook: () => void }) {
             ) : (
               <>
                 <label>
-                  Subiect
-                  <select>
-                    <option>Experiența de rezervare</option>
-                    <option>O resursă</option>
-                    <option>Problemă tehnică</option>
+                  Resursă
+                  <select
+                    required
+                    value={resourceId}
+                    onChange={(event) => setResourceId(event.target.value)}
+                  >
+                    <option value="">Selectează o resursă</option>
+                    {resources.map((resource) => (
+                      <option key={resource.id} value={resource.id}>
+                        {resource.name}
+                      </option>
+                    ))}
                   </select>
                 </label>
                 <label>
                   Evaluare
                   <div className="rating">
                     {[1, 2, 3, 4, 5].map((x) => (
-                      <button type="button" key={x}>
+                      <button
+                        type="button"
+                        key={x}
+                        onClick={() => setRating(x)}
+                        aria-label={`${x} stele`}
+                      >
                         ★
                       </button>
                     ))}
@@ -850,8 +1134,12 @@ function Feedback({ onBook }: { onBook: () => void }) {
                   <textarea
                     placeholder="Spune-ne ce a funcționat bine sau ce putem îmbunătăți..."
                     rows={6}
+                    required
+                    value={message}
+                    onChange={(event) => setMessage(event.target.value)}
                   />
                 </label>
+                {error && <ApiAlert>{error}</ApiAlert>}
                 <button className="primary" type="submit">
                   Trimite feedback
                 </button>
@@ -860,8 +1148,619 @@ function Feedback({ onBook }: { onBook: () => void }) {
           </form>
           <div className="panel">
             <h2>Istoric feedback</h2>
-            <p>Nu există feedback înregistrat.</p>
+            {history.length === 0 ? (
+              <p>Nu există feedback înregistrat.</p>
+            ) : (
+              history.map((item) => (
+                <div key={item.id}>
+                  <strong>{'★'.repeat(item.rating)}</strong>
+                  <p>{item.message}</p>
+                </div>
+              ))
+            )}
           </div>
+        </div>
+      </main>
+    </>
+  );
+}
+
+function WaitlistPage({
+  onBook,
+}: {
+  onBook: (preset?: {
+    resourceId: string;
+    startsAt: string;
+    endsAt: string;
+  }) => void;
+}) {
+  const [entries, setEntries] = useState<
+    import('./types/resource').WaitlistEntry[]
+  >([]);
+  const [resourceId, setResourceId] = useState('');
+  const [start, setStart] = useState('');
+  const [end, setEnd] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const { resources } = useResourceList({ pageSize: 100 });
+  const refresh = () =>
+    listWaitlist()
+      .then(setEntries)
+      .catch((requestError) =>
+        setError(
+          getApiErrorMessage(requestError, 'Lista nu poate fi încărcată'),
+        ),
+      );
+  useEffect(() => {
+    refresh();
+  }, []);
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    try {
+      await createWaitlistEntry({
+        resourceId,
+        desiredStart: new Date(start).toISOString(),
+        desiredEnd: new Date(end).toISOString(),
+      });
+      await refresh();
+      setResourceId('');
+      setStart('');
+      setEnd('');
+    } catch (requestError) {
+      setError(
+        getApiErrorMessage(
+          requestError,
+          'Înregistrarea nu a putut fi adăugată',
+        ),
+      );
+    }
+  };
+  return (
+    <>
+      <Header
+        title="Lista de așteptare"
+        subtitle="Înregistrează preferințele pentru intervale ocupate."
+        onBook={onBook}
+      />
+      <main className="content">
+        <div className="waitlist-explanation">
+          <Icon name="users" size={22} />
+          <div>
+            <strong>Când se folosește lista de așteptare?</strong>
+            <p>
+              Alege resursa și intervalul dorit. Când intervalul se eliberează,
+              vei primi o notificare în aplicație.
+            </p>
+          </div>
+        </div>
+        <div className="waitlist-layout">
+          <form className="panel waitlist-form" onSubmit={submit}>
+            <div className="panel-head">
+              <div>
+                <h2>Adaugă o preferință</h2>
+                <p>Selectează exact intervalul dorit.</p>
+              </div>
+            </div>
+            <label>
+              Resursă
+              <select
+                required
+                value={resourceId}
+                onChange={(event) => setResourceId(event.target.value)}
+              >
+                <option value="">Selectează o resursă</option>
+                {resources.map((resource) => (
+                  <option key={resource.id} value={resource.id}>
+                    {resource.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="waitlist-time-grid">
+              <label>
+                Început
+                <input
+                  required
+                  type="datetime-local"
+                  value={start}
+                  onChange={(event) => setStart(event.target.value)}
+                />
+              </label>
+              <label>
+                Sfârșit
+                <input
+                  required
+                  type="datetime-local"
+                  value={end}
+                  onChange={(event) => setEnd(event.target.value)}
+                />
+              </label>
+            </div>
+            {error && <ApiAlert>{error}</ApiAlert>}
+            <button className="primary" type="submit">
+              Alătură-te listei
+            </button>
+          </form>
+          <section className="waitlist-list">
+            <div className="section-title">
+              <div>
+                <h2>Preferințele tale</h2>
+                <p>{entries.length} înregistrări active sau recente</p>
+              </div>
+            </div>
+            {entries.length === 0 ? (
+              <EmptyPanel icon="users" title="Nu ai preferințe în listă">
+                Completează formularul pentru a fi notificat când apare loc.
+              </EmptyPanel>
+            ) : (
+              entries.map((entry) => {
+                const statusLabel =
+                  entry.status === 'waiting'
+                    ? 'Așteaptă disponibilitate'
+                    : entry.status === 'notified'
+                      ? 'Interval disponibil'
+                      : entry.status === 'confirmed'
+                        ? 'Rezervat'
+                        : 'Retras';
+                return (
+                  <article className="waitlist-card" key={entry.id}>
+                    <div className="waitlist-position">
+                      {entry.position ? (
+                        <>
+                          <strong>{entry.position}</strong>
+                          <span>în listă</span>
+                        </>
+                      ) : (
+                        <Icon
+                          name={
+                            entry.status === 'confirmed'
+                              ? 'check'
+                              : entry.status === 'notified'
+                                ? 'calendar'
+                                : 'close'
+                          }
+                          size={22}
+                        />
+                      )}
+                    </div>
+                    <div className="waitlist-card-main">
+                      <div className="waitlist-card-heading">
+                        <div>
+                          <span className="waitlist-resource">
+                            {entry.resourceName || 'Resursă'}
+                          </span>
+                          <h3>{statusLabel}</h3>
+                        </div>
+                        <Badge
+                          type={
+                            entry.status === 'confirmed'
+                              ? 'success'
+                              : entry.status === 'notified'
+                                ? 'warning'
+                                : entry.status === 'waiting'
+                                  ? 'pending'
+                                  : 'neutral'
+                          }
+                        >
+                          {statusLabel}
+                        </Badge>
+                      </div>
+                      <div className="waitlist-time">
+                        <Icon name="calendar" size={16} />
+                        <span>
+                          {new Date(entry.desiredStart).toLocaleString(
+                            'ro-RO',
+                            {
+                              dateStyle: 'medium',
+                              timeStyle: 'short',
+                            },
+                          )}
+                          {' – '}
+                          {new Date(entry.desiredEnd).toLocaleString('ro-RO', {
+                            dateStyle: 'medium',
+                            timeStyle: 'short',
+                          })}
+                        </span>
+                      </div>
+                      {entry.status === 'waiting' && (
+                        <p className="waitlist-description">
+                          Poziția este calculată după ordinea înregistrării
+                          pentru această resursă.
+                        </p>
+                      )}
+                      {entry.status === 'notified' && (
+                        <p className="waitlist-description available">
+                          Intervalul este disponibil acum. Rezervarea trebuie
+                          făcută în timp util.
+                        </p>
+                      )}
+                    </div>
+                    <div className="waitlist-actions">
+                      {entry.status === 'notified' && (
+                        <button
+                          className="primary"
+                          type="button"
+                          onClick={() =>
+                            onBook({
+                              resourceId: entry.resourceId,
+                              startsAt: entry.desiredStart,
+                              endsAt: entry.desiredEnd,
+                            })
+                          }
+                        >
+                          Rezervă acum
+                        </button>
+                      )}
+                      {['waiting', 'notified'].includes(entry.status) && (
+                        <button
+                          className="outline"
+                          type="button"
+                          onClick={async () => {
+                            await removeWaitlistEntry(entry.id);
+                            await refresh();
+                          }}
+                        >
+                          Retrage
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                );
+              })
+            )}
+          </section>
+        </div>
+      </main>
+    </>
+  );
+}
+
+function UserAdministration() {
+  const [users, setUsers] = useState<AuthUser[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const refresh = () =>
+    listUsers()
+      .then(setUsers)
+      .catch((requestError) =>
+        setError(
+          getApiErrorMessage(requestError, 'Utilizatorii nu pot fi încărcați'),
+        ),
+      );
+  useEffect(() => {
+    refresh();
+  }, []);
+  return (
+    <div className="panel">
+      <h2>Utilizatori și roluri</h2>
+      {error && <ApiAlert>{error}</ApiAlert>}
+      {users.map((account) => (
+        <div key={account.id}>
+          <strong>{account.fullName}</strong>
+          <p>{account.email}</p>
+          <select
+            value={account.role}
+            onChange={async (event) => {
+              await updateUser(account.id, {
+                role: event.target.value as AuthUser['role'],
+              });
+              await refresh();
+            }}
+          >
+            <option value="user">User</option>
+            <option value="manager">Manager</option>
+            <option value="administrator">Administrator</option>
+          </select>
+          <button
+            className="outline"
+            type="button"
+            onClick={async () => {
+              await updateUser(account.id, { isActive: !account.isActive });
+              await refresh();
+            }}
+          >
+            {account.isActive ? 'Dezactivează' : 'Activează'}
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function NotificationsPage({ onBook }: { onBook: () => void }) {
+  const [items, setItems] = useState<import('./types/resource').Notification[]>(
+    [],
+  );
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    listNotifications()
+      .then(setItems)
+      .catch((requestError) =>
+        setError(
+          getApiErrorMessage(requestError, 'Nu am putut încărca notificările'),
+        ),
+      );
+  }, []);
+  return (
+    <>
+      <Header
+        title="Notificări"
+        subtitle="Actualizări despre rezervări și disponibilitate."
+        onBook={onBook}
+      />
+      <main className="content">
+        {error && <ApiAlert>{error}</ApiAlert>}
+        <button
+          className="outline"
+          type="button"
+          onClick={async () => {
+            await markAllNotificationsRead();
+            setItems((values) =>
+              values.map((item) => ({
+                ...item,
+                isRead: true,
+              })),
+            );
+          }}
+        >
+          Marchează toate citite
+        </button>
+        {items.length === 0 ? (
+          <EmptyPanel icon="bell" title="Nu există notificări">
+            Actualizările vor apărea aici.
+          </EmptyPanel>
+        ) : (
+          items.map((item) => (
+            <div
+              className={`notification-card ${item.isRead ? '' : 'unread'}`}
+              key={item.id}
+              onClick={async () => {
+                await markNotificationRead(item.id);
+                setItems((values) =>
+                  values.map((value) =>
+                    value.id === item.id ? { ...value, isRead: true } : value,
+                  ),
+                );
+              }}
+            >
+              <div className="notification-icon">
+                <Icon
+                  name={
+                    item.type === 'slot_available'
+                      ? 'clock'
+                      : item.type === 'resource_maintenance'
+                        ? 'lab'
+                        : item.type === 'booking_cancelled'
+                          ? 'close'
+                          : 'check'
+                  }
+                  size={18}
+                />
+              </div>
+              <div className="notification-main">
+                <strong>{item.message}</strong>
+                <p>{new Date(item.createdAt).toLocaleString('ro-RO')}</p>
+              </div>
+              {!item.isRead && <span className="notification-dot" />}
+            </div>
+          ))
+        )}
+      </main>
+    </>
+  );
+}
+
+function RulesPage({
+  onBook,
+  role,
+}: {
+  onBook: () => void;
+  role: AuthUser['role'];
+}) {
+  const [rules, setRules] = useState<import('./types/resource').ResourceRule[]>(
+    [],
+  );
+  const [resourceId, setResourceId] = useState('');
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
+  const [filterResourceId, setFilterResourceId] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editContent, setEditContent] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const { resources } = useResourceList({ pageSize: 100 });
+  const refresh = () =>
+    listRules()
+      .then(setRules)
+      .catch((requestError) =>
+        setError(
+          getApiErrorMessage(requestError, 'Nu am putut încărca regulile'),
+        ),
+      );
+  useEffect(() => {
+    refresh();
+  }, []);
+  const visibleRules = filterResourceId
+    ? rules.filter((rule) => rule.resourceId === filterResourceId)
+    : rules;
+  return (
+    <>
+      <Header
+        title="Reguli de utilizare"
+        subtitle="Politici pentru folosirea sigură și echitabilă."
+        onBook={onBook}
+      />
+      <main className="content">
+        {error && <ApiAlert>{error}</ApiAlert>}
+        <div className="rules-toolbar">
+          <div>
+            <span className="rules-count">{rules.length}</span>
+            <span> reguli definite</span>
+          </div>
+          <select
+            aria-label="Filtrează regulile după resursă"
+            value={filterResourceId}
+            onChange={(event) => setFilterResourceId(event.target.value)}
+          >
+            <option value="">Toate resursele</option>
+            {resources.map((resource) => (
+              <option key={resource.id} value={resource.id}>
+                {resource.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="rules-layout">
+          {role === 'administrator' && (
+            <form
+              className="panel rules-form"
+              onSubmit={async (event) => {
+                event.preventDefault();
+                try {
+                  await createRule({ resourceId, title, content });
+                  await refresh();
+                  setResourceId('');
+                  setTitle('');
+                  setContent('');
+                } catch (requestError) {
+                  setError(
+                    getApiErrorMessage(
+                      requestError,
+                      'Regula nu a putut fi adăugată',
+                    ),
+                  );
+                }
+              }}
+            >
+              <div className="panel-head">
+                <div>
+                  <h2>Adaugă regulă</h2>
+                  <p>Aplică o instrucțiune unei resurse.</p>
+                </div>
+              </div>
+              <label>
+                Resursă
+                <select
+                  required
+                  value={resourceId}
+                  onChange={(event) => setResourceId(event.target.value)}
+                >
+                  <option value="">Selectează o resursă</option>
+                  {resources.map((resource) => (
+                    <option key={resource.id} value={resource.id}>
+                      {resource.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Titlu
+                <input
+                  required
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                />
+              </label>
+              <label>
+                Conținut
+                <textarea
+                  required
+                  rows={5}
+                  value={content}
+                  onChange={(event) => setContent(event.target.value)}
+                />
+              </label>
+              <button className="primary" type="submit">
+                Publică regula
+              </button>
+            </form>
+          )}
+          <section className="rules-list">
+            {visibleRules.length === 0 ? (
+              <EmptyPanel icon="book" title="Nu există reguli">
+                Selectează o altă resursă sau adaugă prima regulă.
+              </EmptyPanel>
+            ) : (
+              visibleRules.map((rule) => (
+                <article className="rule-card" key={rule.id}>
+                  <div className="rule-card-accent" />
+                  <div className="rule-card-main">
+                    <span className="rule-resource">
+                      {rule.resourceName || 'Regulă generală'}
+                    </span>
+                    {editingId === rule.id ? (
+                      <div className="rule-edit">
+                        <input
+                          aria-label="Titlul regulii"
+                          value={editTitle}
+                          onChange={(event) => setEditTitle(event.target.value)}
+                        />
+                        <textarea
+                          aria-label="Conținutul regulii"
+                          rows={4}
+                          value={editContent}
+                          onChange={(event) =>
+                            setEditContent(event.target.value)
+                          }
+                        />
+                        <div className="rule-actions">
+                          <button
+                            className="primary"
+                            type="button"
+                            onClick={async () => {
+                              await updateRule(rule.id, {
+                                title: editTitle,
+                                content: editContent,
+                              });
+                              await refresh();
+                              setEditingId(null);
+                            }}
+                          >
+                            Salvează
+                          </button>
+                          <button
+                            className="outline"
+                            type="button"
+                            onClick={() => setEditingId(null)}
+                          >
+                            Renunță
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <h2>{rule.title}</h2>
+                        <p>{rule.content}</p>
+                      </>
+                    )}
+                  </div>
+                  {role === 'administrator' && editingId !== rule.id && (
+                    <div className="rule-actions">
+                      <button
+                        className="outline"
+                        type="button"
+                        onClick={() => {
+                          setEditingId(rule.id);
+                          setEditTitle(rule.title);
+                          setEditContent(rule.content);
+                        }}
+                      >
+                        Editează
+                      </button>
+                      <button
+                        className="danger"
+                        type="button"
+                        onClick={async () => {
+                          await deleteRule(rule.id);
+                          await refresh();
+                        }}
+                      >
+                        Șterge
+                      </button>
+                    </div>
+                  )}
+                </article>
+              ))
+            )}
+          </section>
         </div>
       </main>
     </>
@@ -874,7 +1773,7 @@ function SimplePage({
   role,
 }: {
   id: keyof typeof simplePages;
-  onBook: () => void;
+  onBook?: () => void;
   role: AuthUser['role'];
 }) {
   const p = simplePages[id];
@@ -891,17 +1790,24 @@ function SimplePage({
       <main className="content simple-content">
         {id === 'admin' && (
           <>
-            {isAdministrator && p.content}
-            <Suspense
-              fallback={
-                <p role="status">Se încarcă administrarea resurselor...</p>
-              }
-            >
-              <ResourceManagement />
-            </Suspense>
+            {isAdministrator ? (
+              p.content
+            ) : (
+              <Suspense
+                fallback={
+                  <p role="status">Se încarcă administrarea resurselor...</p>
+                }
+              >
+                <ResourceManagement />
+              </Suspense>
+            )}
           </>
         )}
-        {id !== 'admin' && p.content}
+        {id !== 'admin' &&
+          id !== 'waitlist' &&
+          id !== 'notifications' &&
+          id !== 'rules' &&
+          p.content}
       </main>
     </>
   );
@@ -918,20 +1824,46 @@ function BookingModal({
     endsAt: string;
   } | null;
 }) {
+  function toLocalInput(value: string) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return '';
+    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 16);
+  }
   const [submitted, setSubmitted] = useState(false);
   const { resources, loading, error } = useResourceList({ pageSize: 100 });
   const [resourceId, setResourceId] = useState(preset?.resourceId ?? '');
-  const [startsAt, setStartsAt] = useState(preset?.startsAt ?? '');
-  const [endsAt, setEndsAt] = useState(preset?.endsAt ?? '');
-  const submit = (e: React.FormEvent) => {
+  const [startsAt, setStartsAt] = useState(
+    preset ? toLocalInput(preset.startsAt) : '',
+  );
+  const [endsAt, setEndsAt] = useState(
+    preset ? toLocalInput(preset.endsAt) : '',
+  );
+  const [purpose, setPurpose] = useState('');
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitted(true);
+    setSubmitError(null);
+    try {
+      await createReservation({
+        resourceId,
+        startsAt: new Date(startsAt).toISOString(),
+        endsAt: new Date(endsAt).toISOString(),
+        purpose,
+      });
+      setSubmitted(true);
+    } catch (requestError) {
+      setSubmitError(
+        getApiErrorMessage(requestError, 'Rezervarea nu a putut fi creată'),
+      );
+    }
   };
   useEffect(() => {
     if (preset) {
       setResourceId(preset.resourceId);
-      setStartsAt(preset.startsAt);
-      setEndsAt(preset.endsAt);
+      setStartsAt(toLocalInput(preset.startsAt));
+      setEndsAt(toLocalInput(preset.endsAt));
     }
   }, [preset]);
   return (
@@ -988,35 +1920,21 @@ function BookingModal({
               )}
               <div className="form-grid">
                 <label>
-                  Data
+                  Început
                   <input
-                    type="date"
+                    type="datetime-local"
                     required
-                    min={new Date().toISOString().slice(0, 10)}
-                    value={startsAt.slice(0, 10)}
-                    onChange={(e) => {
-                      const date = e.target.value;
-                      setStartsAt(`${date}T${startsAt.slice(11, 16)}`);
-                      setEndsAt(`${date}T${endsAt.slice(11, 16)}`);
-                    }}
+                    value={startsAt}
+                    onChange={(e) => setStartsAt(e.target.value)}
                   />
                 </label>
                 <label>
-                  Ora de început
+                  Sfârșit
                   <input
-                    type="time"
+                    type="datetime-local"
                     required
-                    value={startsAt.slice(11, 16)}
-                    onChange={(e) => setStartsAt(`${startsAt.slice(0, 10)}T${e.target.value}`)}
-                  />
-                </label>
-                <label>
-                  Ora de sfârșit
-                  <input
-                    type="time"
-                    required
-                    value={endsAt.slice(11, 16)}
-                    onChange={(e) => setEndsAt(`${endsAt.slice(0, 10)}T${e.target.value}`)}
+                    value={endsAt}
+                    onChange={(e) => setEndsAt(e.target.value)}
                   />
                 </label>
               </div>
@@ -1025,8 +1943,11 @@ function BookingModal({
                 <textarea
                   rows={3}
                   placeholder="Descrie scopul sesiunii de cercetare..."
+                  value={purpose}
+                  onChange={(e) => setPurpose(e.target.value)}
                 />
               </label>
+              {submitError && <ApiAlert>{submitError}</ApiAlert>}
               <div className="modal-actions">
                 <button type="button" className="outline" onClick={close}>
                   Renunță
@@ -1224,6 +2145,13 @@ function Application() {
     logout();
     setPage('dashboard');
   };
+  const openBooking: (() => void) | undefined =
+    user.role === 'user'
+      ? () => {
+          setBookingPreset(null);
+          setBooking(true);
+        }
+      : undefined;
 
   return (
     <div className="app-shell">
@@ -1280,13 +2208,13 @@ function Application() {
         {currentPage === 'dashboard' && (
           <Dashboard
             go={setPage}
-            onBook={() => setBooking(true)}
+            onBook={openBooking}
             onSelectResource={handleSelectResource}
           />
         )}{' '}
         {currentPage === 'catalog' && (
           <Catalog
-            onBook={() => setBooking(true)}
+            onBook={openBooking}
             onSelectResource={handleSelectResource}
           />
         )}{' '}
@@ -1294,36 +2222,50 @@ function Application() {
           <Detail
             resourceId={selectedResourceId}
             go={setPage}
-            onBook={() => setBooking(true)}
+            onBook={openBooking}
           />
         )}{' '}
         {currentPage === 'calendar' && (
           <Calendar
             onBook={(preset) => {
-              setBookingPreset(preset ?? null);
-              setBooking(true);
+              if (user.role === 'user') {
+                setBookingPreset(preset ?? null);
+                setBooking(true);
+              }
             }}
             onSelectResource={handleSelectResource}
             userRole={user.role}
           />
         )}{' '}
         {currentPage === 'bookings' && (
-          <Reservations onBook={() => setBooking(true)} />
+          <Reservations onBook={openBooking} role={user.role} />
         )}{' '}
-        {currentPage === 'feedback' && (
-          <Feedback onBook={() => setBooking(true)} />
-        )}{' '}
-        {(['waitlist', 'notifications', 'rules', 'admin'] as const).includes(
-          currentPage as never,
-        ) && (
+        {currentPage === 'feedback' && <Feedback onBook={openBooking} />}{' '}
+        {currentPage === 'waitlist' && (
+          <WaitlistPage
+            onBook={(preset) => {
+              setBookingPreset(preset ?? null);
+              if (user.role === 'user') setBooking(true);
+            }}
+          />
+        )}
+        {currentPage === 'notifications' && (
+          <NotificationsPage onBook={openBooking} />
+        )}
+        {currentPage === 'rules' && (
+          <RulesPage onBook={openBooking} role={user.role} />
+        )}
+        {(['admin'] as const).includes(currentPage as never) && (
           <SimplePage
             id={currentPage as keyof typeof simplePages}
-            onBook={() => setBooking(true)}
+            onBook={openBooking}
             role={user.role}
           />
         )}
       </div>
-      {booking && <BookingModal close={() => setBooking(false)} preset={bookingPreset} />}
+      {booking && (
+        <BookingModal close={() => setBooking(false)} preset={bookingPreset} />
+      )}
     </div>
   );
 }

@@ -162,3 +162,73 @@ export type TimeSlot = {
 
   end: Date;
 };
+
+export type Reservation = {
+  id: string;
+  userId: string;
+  resourceId: string;
+  startsAt: string;
+  endsAt: string;
+  purpose: string;
+  teamName: string | null;
+  status: ReservationState;
+  reviewedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ReservationInput = {
+  resourceId: string;
+  startsAt: string;
+  endsAt: string;
+  purpose?: string;
+  teamName?: string | null;
+  userId?: string;
+};
+
+export type WaitlistEntry = {
+  id: string;
+  userId: string;
+  resourceId: string;
+  desiredStart: string;
+  desiredEnd: string;
+  requirements: Record<string, unknown>;
+  status: 'waiting' | 'notified' | 'confirmed' | 'expired';
+  resourceName?: string | null;
+  position?: number | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Notification = {
+  id: string;
+  userId: string;
+  reservationId: string | null;
+  message: string;
+  type:
+    | 'booking_confirmed'
+    | 'booking_cancelled'
+    | 'slot_available'
+    | 'resource_maintenance';
+  isRead: boolean;
+  createdAt: string;
+};
+
+export type Feedback = {
+  id: string;
+  userId: string;
+  resourceId: string;
+  rating: number;
+  message: string;
+  createdAt: string;
+};
+
+export type ResourceRule = {
+  id: string;
+  resourceId: string;
+  resourceName?: string | null;
+  title: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+};

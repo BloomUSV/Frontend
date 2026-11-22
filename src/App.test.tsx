@@ -28,6 +28,11 @@ vi.mock('./hooks/useResourceList', () => ({
   }),
 }));
 
+vi.mock('./services/userService', () => ({
+  listUsers: vi.fn().mockResolvedValue([]),
+  updateUser: vi.fn().mockResolvedValue({}),
+}));
+
 vi.mock('./components/ResourceManagement', () => ({
   default: () => <div>Controale de gestionare a resurselor</div>,
 }));
@@ -98,7 +103,7 @@ describe('role-based navigation', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows administrator panels only to administrators', async () => {
+  it('shows administrator UI without resource management controls', async () => {
     renderAs('administrator');
 
     const navigation = screen.getByRole('navigation', {
@@ -110,8 +115,8 @@ describe('role-based navigation', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText('Controale de gestionare a resurselor'),
-      ).toBeInTheDocument();
+        screen.queryByText('Controale de gestionare a resurselor'),
+      ).not.toBeInTheDocument();
     });
   });
 });
