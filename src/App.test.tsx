@@ -47,10 +47,26 @@ function renderAs(role: AuthUser['role']) {
     isLoading: false,
     error: null,
     login: vi.fn(),
+    register: vi.fn(),
     logout: vi.fn(),
   });
 
   return render(<App />);
+}
+
+function renderUnauthenticated(
+  register = vi.fn().mockResolvedValue(undefined),
+) {
+  vi.mocked(useAuth).mockReturnValue({
+    user: null,
+    isLoading: false,
+    error: null,
+    login: vi.fn().mockResolvedValue(undefined),
+    register,
+    logout: vi.fn(),
+  });
+
+  return { ...render(<App />), register };
 }
 
 describe('role-based navigation', () => {
@@ -133,5 +149,62 @@ describe('role-based navigation', () => {
 
     fireEvent.change(start, { target: { value: startMinimum } });
     expect(end.getAttribute('min')! > startMinimum!).toBe(true);
+  });
+
+  it('creates a regular account and returns to sign in', async () => {
+    const register = vi.fn().mockResolvedValue(undefined);
+    renderUnauthenticated(register);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Înregistrează-te' }));
+    fireEvent.change(screen.getByLabelText('Nume complet'), {
+      target: { value: 'Andrei Ionescu' },
+    });
+    fireEvent.change(screen.getByLabelText('Adresă de e-mail'), {
+      target: { value: 'andrei@example.edu' },
+    });
+    fireEvent.change(screen.getByLabelText('Parolă'), {
+      target: { value: 'parola-sigura-123' },
+    });
+    fireEvent.change(screen.getByLabelText('Confirmă parola'), {
+      target: { value: 'parola-sigura-123' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Creează contul' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Contul a fost creat.',
+    );
+    expect(register).toHaveBeenCalledWith(
+      'Andrei Ionescu',
+      'andrei@example.edu',
+      'parola-sigura-123',
+    );
+    expect(
+      screen.getByRole('heading', { name: 'Bine ai revenit' }),
+    ).toBeInTheDocument();
+  });
+
+  it('does not send registration when passwords do not match', async () => {
+    const register = vi.fn().mockResolvedValue(undefined);
+    renderUnauthenticated(register);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Înregistrează-te' }));
+    fireEvent.change(screen.getByLabelText('Nume complet'), {
+      target: { value: 'Andrei Ionescu' },
+    });
+    fireEvent.change(screen.getByLabelText('Adresă de e-mail'), {
+      target: { value: 'andrei@example.edu' },
+    });
+    fireEvent.change(screen.getByLabelText('Parolă'), {
+      target: { value: 'parola-sigura-123' },
+    });
+    fireEvent.change(screen.getByLabelText('Confirmă parola'), {
+      target: { value: 'alta-parola-123' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Creează contul' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Parolele nu coincid.',
+    );
+    expect(register).not.toHaveBeenCalled();
   });
 });
