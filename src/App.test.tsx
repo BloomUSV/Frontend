@@ -1,10 +1,4 @@
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import App from './App';
@@ -26,6 +20,11 @@ vi.mock('./hooks/useResourceList', () => ({
     error: null,
     refresh: vi.fn(),
   }),
+}));
+
+vi.mock('./services/userService', () => ({
+  listUsers: vi.fn().mockResolvedValue([]),
+  updateUser: vi.fn().mockResolvedValue({}),
 }));
 
 vi.mock('./components/ResourceManagement', () => ({
@@ -96,9 +95,10 @@ describe('role-based navigation', () => {
     expect(
       await screen.findByText('Controale de gestionare a resurselor'),
     ).toBeInTheDocument();
+    expect(screen.queryByText('Utilizatori și roluri')).not.toBeInTheDocument();
   });
 
-  it('shows administrator panels only to administrators', async () => {
+  it('shows resource and user administration controls to administrators', async () => {
     renderAs('administrator');
 
     const navigation = screen.getByRole('navigation', {
@@ -108,10 +108,30 @@ describe('role-based navigation', () => {
       within(navigation).getByRole('button', { name: 'Administrare' }),
     );
 
-    await waitFor(() => {
-      expect(
-        screen.getByText('Controale de gestionare a resurselor'),
-      ).toBeInTheDocument();
-    });
+    expect(
+      await screen.findByText('Utilizatori și roluri'),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText('Controale de gestionare a resurselor'),
+    ).toBeInTheDocument();
+  });
+
+  it('limits reservation dates to the present and later', async () => {
+    renderAs('user');
+    fireEvent.click(screen.getByRole('button', { name: 'Rezervare nouă' }));
+
+    const start = await screen.findByLabelText('Început');
+    const end = screen.getByLabelText('Sfârșit');
+    const startMinimum = start.getAttribute('min');
+    const endMinimum = end.getAttribute('min');
+
+    expect(startMinimum).not.toBeNull();
+    expect(endMinimum).toBe(startMinimum);
+    expect(new Date(startMinimum!).getTime()).toBeGreaterThanOrEqual(
+      Date.now() - 1000,
+    );
+
+    fireEvent.change(start, { target: { value: startMinimum } });
+    expect(end.getAttribute('min')! > startMinimum!).toBe(true);
   });
 });
