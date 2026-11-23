@@ -218,7 +218,7 @@ const nav: {
     page: 'feedback',
     label: 'Feedback',
     icon: 'message',
-    roles: ['user'],
+    
   },
   {
     page: 'admin',
@@ -874,7 +874,7 @@ function Reservations({
   onBook,
   role,
 }: {
-  onBook: () => void;
+  onBook?: () => void;
   role: AuthUser['role'];
 }) {
   const [reservations, setReservations] = useState<
@@ -1074,7 +1074,14 @@ function Reservations({
   );
 }
 
-function Feedback({ onBook }: { onBook: () => void }) {
+function Feedback({
+  onBook,
+  role,
+}: {
+  onBook?: () => void;
+  role: AuthUser['role'];
+}) {
+  const isReviewer = role !== 'user';
   const [sent, setSent] = useState(false);
   const [rating, setRating] = useState(0);
   const [resourceId, setResourceId] = useState('');
@@ -1084,108 +1091,148 @@ function Feedback({ onBook }: { onBook: () => void }) {
     [],
   );
   const { resources } = useResourceList({ pageSize: 100 });
+
   useEffect(() => {
-    listFeedback()
+    listFeedback(isReviewer ? 'all' : 'own')
       .then(setHistory)
       .catch((requestError) =>
         setError(
-          getApiErrorMessage(requestError, 'Nu am putut încărca istoricul'),
+          getApiErrorMessage(requestError, 'Nu am putut încărca feedback-ul'),
         ),
       );
-  }, []);
+  }, [isReviewer]);
+
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
+    if (rating === 0) {
+      setError('Alege o evaluare de la 1 la 5 stele.');
+      return;
+    }
     try {
       await createFeedback({ resourceId, rating, message });
       setSent(true);
-      setHistory(await listFeedback());
+      setRating(0);
+      setResourceId('');
+      setMessage('');
+      setHistory(await listFeedback('own'));
     } catch (requestError) {
       setError(
         getApiErrorMessage(requestError, 'Feedback-ul nu a putut fi trimis'),
       );
     }
   };
+
+  const historyList =
+    history.length === 0 ? (
+      <p>Nu există feedback înregistrat.</p>
+    ) : (
+      history.map((item) => (
+        <div key={item.id}>
+          <strong>
+            {'★'.repeat(item.rating)}
+            {'☆'.repeat(5 - item.rating)}
+          </strong>
+          <p>
+            {isReviewer ? `${item.userName ?? 'Utilizator'} · ` : ''}
+            {item.resourceName ?? 'Resursă'}
+          </p>
+          <p>{item.message}</p>
+          <small>{new Date(item.createdAt).toLocaleString('ro-RO')}</small>
+        </div>
+      ))
+    );
+
   return (
     <>
       <Header
         title="Feedback"
-        subtitle="Ajută-ne să îmbunătățim experiența platformei."
+        subtitle={
+          isReviewer
+            ? 'Feedback-ul trimis de utilizatori.'
+            : 'Spune-ne ce a funcționat bine sau ce putem îmbunătăți.'
+        }
         onBook={onBook}
       />
       <main className="content">
-        <div className="detail-columns">
-          <form className="panel feedback" onSubmit={submit}>
-            <h2>Trimite feedback</h2>
-            {sent ? (
-              <div className="success-box">
-                <Icon name="check" />
-                <strong>Mulțumim pentru feedback!</strong>
-                <p>Mesajul tău a fost înregistrat.</p>
-              </div>
-            ) : (
-              <>
-                <label>
-                  Resursă
-                  <select
-                    required
-                    value={resourceId}
-                    onChange={(event) => setResourceId(event.target.value)}
-                  >
-                    <option value="">Selectează o resursă</option>
-                    {resources.map((resource) => (
-                      <option key={resource.id} value={resource.id}>
-                        {resource.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Evaluare
-                  <div className="rating">
-                    {[1, 2, 3, 4, 5].map((x) => (
-                      <button
-                        type="button"
-                        key={x}
-                        onClick={() => setRating(x)}
-                        aria-label={`${x} stele`}
-                      >
-                        ★
-                      </button>
-                    ))}
-                  </div>
-                </label>
-                <label>
-                  Mesaj
-                  <textarea
-                    placeholder="Spune-ne ce a funcționat bine sau ce putem îmbunătăți..."
-                    rows={6}
-                    required
-                    value={message}
-                    onChange={(event) => setMessage(event.target.value)}
-                  />
-                </label>
-                {error && <ApiAlert>{error}</ApiAlert>}
-                <button className="primary" type="submit">
-                  Trimite feedback
-                </button>
-              </>
-            )}
-          </form>
+        {error && <ApiAlert>{error}</ApiAlert>}
+        {isReviewer ? (
           <div className="panel">
-            <h2>Istoric feedback</h2>
-            {history.length === 0 ? (
-              <p>Nu există feedback înregistrat.</p>
-            ) : (
-              history.map((item) => (
-                <div key={item.id}>
-                  <strong>{'★'.repeat(item.rating)}</strong>
-                  <p>{item.message}</p>
-                </div>
-              ))
-            )}
+            <h2>Feedback primit</h2>
+            {historyList}
           </div>
-        </div>
+        ) : (
+          <div className="detail-columns">
+            <form className="panel feedback" onSubmit={submit}>
+              <h2>Trimite feedback</h2>
+              {sent ? (
+                <div className="success-box">
+                  <Icon name="check" size={32} />
+                  <strong>Mulțumim pentru feedback!</strong>
+                  <button
+                    className="outline"
+                    type="button"
+                    onClick={() => setSent(false)}
+                  >
+                    Trimite alt feedback
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <label>
+                    Resursă
+                    <select
+                      required
+                      value={resourceId}
+                      onChange={(event) => setResourceId(event.target.value)}
+                    >
+                      <option value="">Selectează o resursă</option>
+                      {resources.map((resource) => (
+                        <option key={resource.id} value={resource.id}>
+                          {resource.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Evaluare
+                    <div className="rating">
+                      {[1, 2, 3, 4, 5].map((x) => (
+                        <button
+                          type="button"
+                          key={x}
+                          onClick={() => setRating(x)}
+                          aria-label={`${x} stele`}
+                          style={{ opacity: x <= rating ? 1 : 0.3 }}
+                        >
+                          ★
+                        </button>
+                      ))}
+                    </div>
+                  </label>
+                  <label>
+                    Mesaj
+                    <textarea
+                      placeholder="Spune-ne ce a funcționat bine sau ce putem îmbunătăți..."
+                      rows={6}
+                      required
+                      maxLength={5000}
+                      value={message}
+                      onChange={(event) => setMessage(event.target.value)}
+                    />
+                  </label>
+                  <button className="primary" type="submit">
+                    Trimite feedback
+                  </button>
+                </>
+              )}
+            </form>
+            <div className="panel">
+              <h2>Istoric feedback</h2>
+              {historyList}
+            </div>
+          </div>
+        )}
       </main>
     </>
   );
@@ -1494,7 +1541,7 @@ function UserAdministration() {
   );
 }
 
-function NotificationsPage({ onBook }: { onBook: () => void }) {
+function NotificationsPage({ onBook }: { onBook?: () => void }) {
   const [items, setItems] = useState<import('./types/resource').Notification[]>(
     [],
   );
@@ -1581,7 +1628,7 @@ function RulesPage({
   onBook,
   role,
 }: {
-  onBook: () => void;
+  onBook?: () => void;
   role: AuthUser['role'];
 }) {
   const [rules, setRules] = useState<import('./types/resource').ResourceRule[]>(
@@ -2271,7 +2318,9 @@ function Application() {
         {currentPage === 'bookings' && (
           <Reservations onBook={openBooking} role={user.role} />
         )}{' '}
-        {currentPage === 'feedback' && <Feedback onBook={openBooking} />}{' '}
+                {currentPage === 'feedback' && (
+          <Feedback onBook={openBooking} role={user.role} />
+        )}{' '}
         {currentPage === 'waitlist' && (
           <WaitlistPage
             onBook={(preset) => {

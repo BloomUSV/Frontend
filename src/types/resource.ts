@@ -217,7 +217,9 @@ export type Notification = {
 export type Feedback = {
   id: string;
   userId: string;
+  userName?: string | null;
   resourceId: string;
+  resourceName?: string | null;
   rating: number;
   message: string;
   createdAt: string;
