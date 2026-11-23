@@ -2047,27 +2047,54 @@ function BookingModal({
 
 function Login({
   onLogin,
+  onRegister,
   initialError,
 }: {
   onLogin: (email: string, password: string) => Promise<void>;
+  onRegister: (
+    fullName: string,
+    email: string,
+    password: string,
+  ) => Promise<void>;
   initialError: string | null;
 }) {
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(initialError);
+  const [success, setSuccess] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitting(true);
     setError(null);
+    setSuccess(null);
     try {
-      await onLogin(email, password);
+      if (isRegistering) {
+        if (password !== confirmPassword) {
+          setError('Parolele nu coincid.');
+          return;
+        }
+        await onRegister(fullName, email, password);
+        setIsRegistering(false);
+        setPassword('');
+        setConfirmPassword('');
+        setSuccess(
+          'Contul a fost creat. Te poți autentifica folosind datele noi.',
+        );
+      } else {
+        await onLogin(email, password);
+      }
     } catch (requestError: unknown) {
       setError(
         getApiErrorMessage(
           requestError,
-          'Autentificarea nu a reușit. Încearcă din nou.',
+          isRegistering
+            ? 'Înregistrarea nu a reușit. Încearcă din nou.'
+            : 'Autentificarea nu a reușit. Încearcă din nou.',
         ),
       );
     } finally {
@@ -2103,9 +2130,31 @@ function Login({
         </div>
       </div>
       <form className="login-card" onSubmit={handleSubmit}>
-        <h2>Bine ai revenit</h2>
-        <p>Autentifică-te folosind contul instituțional USV.</p>
+        <h2>{isRegistering ? 'Creează un cont' : 'Bine ai revenit'}</h2>
+        <p>
+          {isRegistering
+            ? 'Înregistrează-te pentru a rezerva resursele universității.'
+            : 'Autentifică-te folosind contul instituțional USV.'}
+        </p>
         {error && <ApiAlert>{error}</ApiAlert>}
+        {success && (
+          <div className="auth-success" role="status">
+            {success}
+          </div>
+        )}
+        {isRegistering && (
+          <label>
+            Nume complet
+            <input
+              type="text"
+              autoComplete="name"
+              required
+              maxLength={200}
+              value={fullName}
+              onChange={(event) => setFullName(event.target.value)}
+            />
+          </label>
+        )}
         <label>
           Adresă de e-mail
           <input
@@ -2120,18 +2169,62 @@ function Login({
           Parolă
           <input
             type="password"
-            autoComplete="current-password"
+            autoComplete={isRegistering ? 'new-password' : 'current-password'}
             required
+            minLength={isRegistering ? 12 : undefined}
+            maxLength={isRegistering ? 72 : undefined}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
         </label>
-        <div className="login-options">
-          <span>Conturile manager și administrator pot gestiona resurse.</span>
-        </div>
+        {isRegistering && (
+          <small className="auth-password-hint">
+            Folosește o parolă de cel puțin 12 caractere.
+          </small>
+        )}
+        {isRegistering && (
+          <label>
+            Confirmă parola
+            <input
+              type="password"
+              autoComplete="new-password"
+              required
+              minLength={12}
+              maxLength={72}
+              value={confirmPassword}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+            />
+          </label>
+        )}
+        {!isRegistering && (
+          <div className="login-options">
+            <span>
+              Conturile manager și administrator pot gestiona resurse.
+            </span>
+          </div>
+        )}
         <button className="primary full" disabled={submitting}>
-          {submitting ? 'Se autentifică...' : 'Autentificare'}
+          {submitting
+            ? isRegistering
+              ? 'Se creează contul...'
+              : 'Se autentifică...'
+            : isRegistering
+              ? 'Creează contul'
+              : 'Autentificare'}
         </button>
+        <div className="auth-mode-switch">
+          {isRegistering ? 'Ai deja un cont?' : 'Nu ai încă un cont?'}
+          <button
+            type="button"
+            onClick={() => {
+              setIsRegistering(!isRegistering);
+              setError(null);
+              setSuccess(null);
+            }}
+          >
+            {isRegistering ? 'Autentifică-te' : 'Înregistrează-te'}
+          </button>
+        </div>
         <small>Acces securizat pentru comunitatea academică USV.</small>
       </form>
     </div>
@@ -2163,7 +2256,7 @@ function Logo() {
 }
 
 function Application() {
-  const { user, isLoading, error, login, logout } = useAuth();
+  const { user, isLoading, error, login, register, logout } = useAuth();
   const [page, setPage] = useState<Page>('dashboard');
   const [booking, setBooking] = useState(false);
   const [bookingPreset, setBookingPreset] = useState<{
@@ -2203,6 +2296,7 @@ function Application() {
           await login(email, password);
           setPage('dashboard');
         }}
+        onRegister={register}
         initialError={error}
       />
     );
