@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import App from './App';
 import { useAuth } from './context/AuthContext';
+import * as reservationService from './services/reservationService';
 import type { AuthUser } from './types/resource';
 
 vi.mock('./context/AuthContext', () => ({
@@ -25,6 +27,14 @@ vi.mock('./hooks/useResourceList', () => ({
 vi.mock('./services/userService', () => ({
   listUsers: vi.fn().mockResolvedValue([]),
   updateUser: vi.fn().mockResolvedValue({}),
+}));
+
+vi.mock('./services/reservationService', () => ({
+  cancelReservation: vi.fn(),
+  createReservation: vi.fn(),
+  listReservations: vi.fn().mockResolvedValue([]),
+  reviewReservation: vi.fn(),
+  updateReservation: vi.fn(),
 }));
 
 vi.mock('./components/ResourceManagement', () => ({
@@ -132,6 +142,76 @@ describe('role-based navigation', () => {
     ).toBeInTheDocument();
   });
 
+  it('allows managers to confirm pending reservations', async () => {
+    const pendingReservation = {
+      id: 'reservation-1',
+      userId: user.id,
+      resourceId: 'resource-1',
+      startsAt: '2026-12-01T10:00:00Z',
+      endsAt: '2026-12-01T11:00:00Z',
+      purpose: 'Microscopy',
+      teamName: null,
+      status: 'pending' as const,
+      reviewedBy: null,
+      createdAt: '2026-11-20T10:00:00Z',
+      updatedAt: '2026-11-20T10:00:00Z',
+    };
+    vi.mocked(reservationService.listReservations).mockResolvedValue([
+      pendingReservation,
+    ]);
+    vi.mocked(reservationService.reviewReservation).mockResolvedValue({
+      ...pendingReservation,
+      status: 'confirmed',
+    });
+
+    renderAs('manager');
+    fireEvent.click(
+      within(
+        screen.getByRole('navigation', { name: 'Navigare principală' }),
+      ).getByRole('button', { name: 'Rezervările mele' }),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirmă' }));
+
+    expect(reservationService.reviewReservation).toHaveBeenCalledWith(
+      'reservation-1',
+      'confirmed',
+    );
+    expect(await screen.findByText('confirmed')).toBeInTheDocument();
+  });
+
+  it('shows API errors when a manager cannot confirm a reservation', async () => {
+    vi.mocked(reservationService.listReservations).mockResolvedValue([
+      {
+        id: 'reservation-2',
+        userId: user.id,
+        resourceId: 'resource-1',
+        startsAt: '2026-12-01T10:00:00Z',
+        endsAt: '2026-12-01T11:00:00Z',
+        purpose: 'Microscopy',
+        teamName: null,
+        status: 'pending',
+        reviewedBy: null,
+        createdAt: '2026-11-20T10:00:00Z',
+        updatedAt: '2026-11-20T10:00:00Z',
+      },
+    ]);
+    vi.mocked(reservationService.reviewReservation).mockRejectedValue(
+      new Error('You are not allowed to approve this reservation.'),
+    );
+
+    renderAs('manager');
+    fireEvent.click(
+      within(
+        screen.getByRole('navigation', { name: 'Navigare principală' }),
+      ).getByRole('button', { name: 'Rezervările mele' }),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirmă' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'You are not allowed to approve this reservation.',
+    );
+  });
+
   it('limits reservation dates to the present and later', async () => {
     renderAs('user');
     fireEvent.click(screen.getByRole('button', { name: 'Rezervare nouă' }));
@@ -151,9 +231,23 @@ describe('role-based navigation', () => {
     expect(end.getAttribute('min')! > startMinimum!).toBe(true);
   });
 
-  it('creates a regular account and returns to sign in', async () => {
-    const register = vi.fn().mockResolvedValue(undefined);
-    renderUnauthenticated(register);
+  it('creates an account and immediately signs into the new account', async () => {
+    let authenticate: (account: AuthUser) => void = () => undefined;
+    const register = vi.fn(async () => authenticate(user));
+    vi.mocked(useAuth).mockImplementation(() => {
+      const [authenticatedUser, setAuthenticatedUser] =
+        useState<AuthUser | null>(null);
+      authenticate = setAuthenticatedUser;
+      return {
+        user: authenticatedUser,
+        isLoading: false,
+        error: null,
+        login: vi.fn(),
+        register,
+        logout: vi.fn(),
+      };
+    });
+    render(<App />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Înregistrează-te' }));
     fireEvent.change(screen.getByLabelText('Nume complet'), {
@@ -170,17 +264,12 @@ describe('role-based navigation', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Creează contul' }));
 
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'Contul a fost creat.',
-    );
     expect(register).toHaveBeenCalledWith(
       'Andrei Ionescu',
       'andrei@example.edu',
       'parola-sigura-123',
     );
-    expect(
-      screen.getByRole('heading', { name: 'Bine ai revenit' }),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Andrei Ionescu')).toBeInTheDocument();
   });
 
   it('does not send registration when passwords do not match', async () => {

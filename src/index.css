@@ -1329,16 +1329,6 @@ textarea {
   font-size: 12px;
   color: var(--muted);
 }
-.auth-success {
-  margin: 14px 0;
-  padding: 11px 12px;
-  border: 1px solid #b8e4d3;
-  border-radius: 9px;
-  background: #effaf5;
-  color: #176b4a;
-  font-size: 12px;
-  line-height: 1.5;
-}
 .auth-mode-switch {
   display: flex;
   flex-wrap: wrap;

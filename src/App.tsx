@@ -30,7 +30,6 @@ import {
 import { listUsers, updateUser } from './services/userService';
 import type { AuthUser, Resource, ResourceType } from './types/resource';
 import Calendar from './components/Calendar';
-import { setCalendarResources } from './components/Calendar';
 import './components/ApiAlert.css';
 
 const ResourceManagement = lazy(
@@ -218,7 +217,6 @@ const nav: {
     page: 'feedback',
     label: 'Feedback',
     icon: 'message',
-    
   },
   {
     page: 'admin',
@@ -883,6 +881,7 @@ function Reservations({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editStart, setEditStart] = useState('');
   const [editEnd, setEditEnd] = useState('');
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const minDateTime = getCurrentDateTimeMinimum();
@@ -908,6 +907,27 @@ function Reservations({
       setError(
         getApiErrorMessage(requestError, 'Nu am putut anula rezervarea'),
       );
+    }
+  }
+  async function review(id: string, status: 'confirmed' | 'rejected') {
+    setError(null);
+    setReviewingId(id);
+    try {
+      const updated = await reviewReservation(id, status);
+      setReservations((items) =>
+        items.map((item) => (item.id === id ? updated : item)),
+      );
+    } catch (requestError) {
+      setError(
+        getApiErrorMessage(
+          requestError,
+          status === 'confirmed'
+            ? 'Rezervarea nu a putut fi confirmată.'
+            : 'Rezervarea nu a putut fi respinsă.',
+        ),
+      );
+    } finally {
+      setReviewingId(null);
     }
   }
   function toLocalInput(value: string) {
@@ -1036,32 +1056,18 @@ function Reservations({
                 <button
                   className="primary"
                   type="button"
-                  onClick={async () => {
-                    await reviewReservation(reservation.id, 'confirmed');
-                    setReservations((items) =>
-                      items.map((item) =>
-                        item.id === reservation.id
-                          ? { ...item, status: 'confirmed' }
-                          : item,
-                      ),
-                    );
-                  }}
+                  disabled={reviewingId === reservation.id}
+                  onClick={() => review(reservation.id, 'confirmed')}
                 >
-                  Confirmă
+                  {reviewingId === reservation.id
+                    ? 'Se procesează...'
+                    : 'Confirmă'}
                 </button>
                 <button
                   className="outline"
                   type="button"
-                  onClick={async () => {
-                    await reviewReservation(reservation.id, 'rejected');
-                    setReservations((items) =>
-                      items.map((item) =>
-                        item.id === reservation.id
-                          ? { ...item, status: 'rejected' }
-                          : item,
-                      ),
-                    );
-                  }}
+                  disabled={reviewingId === reservation.id}
+                  onClick={() => review(reservation.id, 'rejected')}
                 >
                   Respinge
                 </button>
@@ -2064,14 +2070,12 @@ function Login({
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(initialError);
-  const [success, setSuccess] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitting(true);
     setError(null);
-    setSuccess(null);
     try {
       if (isRegistering) {
         if (password !== confirmPassword) {
@@ -2079,12 +2083,6 @@ function Login({
           return;
         }
         await onRegister(fullName, email, password);
-        setIsRegistering(false);
-        setPassword('');
-        setConfirmPassword('');
-        setSuccess(
-          'Contul a fost creat. Te poți autentifica folosind datele noi.',
-        );
       } else {
         await onLogin(email, password);
       }
@@ -2137,11 +2135,6 @@ function Login({
             : 'Autentifică-te folosind contul instituțional USV.'}
         </p>
         {error && <ApiAlert>{error}</ApiAlert>}
-        {success && (
-          <div className="auth-success" role="status">
-            {success}
-          </div>
-        )}
         {isRegistering && (
           <label>
             Nume complet
@@ -2219,7 +2212,6 @@ function Login({
             onClick={() => {
               setIsRegistering(!isRegistering);
               setError(null);
-              setSuccess(null);
             }}
           >
             {isRegistering ? 'Autentifică-te' : 'Înregistrează-te'}
@@ -2264,10 +2256,11 @@ function Application() {
     startsAt: string;
     endsAt: string;
   } | null>(null);
-  const { resources: calendarResources } = useResourceList({ pageSize: 100 });
-  useEffect(() => {
-    setCalendarResources(calendarResources);
-  }, [calendarResources]);
+  const {
+    resources: calendarResources,
+    loading: calendarResourcesLoading,
+    error: calendarResourcesError,
+  } = useResourceList({ pageSize: 100 });
   const [selectedResourceId, setSelectedResourceId] = useState<string | null>(
     null,
   );
@@ -2399,20 +2392,22 @@ function Application() {
         )}{' '}
         {currentPage === 'calendar' && (
           <Calendar
+            resources={calendarResources}
+            resourcesLoading={calendarResourcesLoading}
+            resourcesError={calendarResourcesError}
             onBook={(preset) => {
               if (user.role === 'user') {
                 setBookingPreset(preset ?? null);
                 setBooking(true);
               }
             }}
-            onSelectResource={handleSelectResource}
             userRole={user.role}
           />
         )}{' '}
         {currentPage === 'bookings' && (
           <Reservations onBook={openBooking} role={user.role} />
         )}{' '}
-                {currentPage === 'feedback' && (
+        {currentPage === 'feedback' && (
           <Feedback onBook={openBooking} role={user.role} />
         )}{' '}
         {currentPage === 'waitlist' && (

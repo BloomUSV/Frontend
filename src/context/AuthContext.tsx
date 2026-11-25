@@ -77,6 +77,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (fullName: string, email: string, password: string) => {
       setError(null);
       await authService.register(fullName, email, password);
+      const result = await authService.login(email, password);
+      setUser(result.user);
     },
     [],
   );
