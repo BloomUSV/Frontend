@@ -91,18 +91,22 @@ function isTimeSlotFree(
 }
 
 type CalendarProps = {
+  resources: Resource[];
+  resourcesLoading: boolean;
+  resourcesError: string | null;
   onBook: (preset?: {
     resourceId: string;
     startsAt: string;
     endsAt: string;
   }) => void;
-  onSelectResource: (resourceId: string) => void;
   userRole: 'user' | 'manager' | 'administrator';
 };
 
 export default function Calendar({
+  resources,
+  resourcesLoading,
+  resourcesError,
   onBook,
-  onSelectResource,
   userRole,
 }: CalendarProps) {
   const [view, setView] = useState<CalendarView>('week');
@@ -323,9 +327,16 @@ export default function Calendar({
           </div>
         </div>
         <div className="calendar-header-right">
-          <label className="resource-selector-label">Resursă</label>
+          <label
+            className="resource-selector-label"
+            htmlFor="calendar-resource"
+          >
+            Resursă
+          </label>
           <select
+            id="calendar-resource"
             className="resource-select"
+            disabled={resourcesLoading || resources.length === 0}
             value={selectedResource?.id ?? ''}
             onChange={(e) => {
               const id = e.target.value;
@@ -333,11 +344,23 @@ export default function Calendar({
                 setSelectedResource(null);
                 return;
               }
-              const resource = allResources.find((r) => r.id === id);
-              if (resource) setSelectedResource(resource);
+              const resource = resources.find((item) => item.id === id);
+              setSelectedResource(resource ?? null);
+              setSelectedSlot(null);
             }}
           >
-            <option value="">Selectează o resursă</option>
+            <option value="">
+              {resourcesLoading
+                ? 'Se încarcă resursele...'
+                : resources.length === 0
+                  ? 'Nu există resurse disponibile'
+                  : 'Selectează o resursă'}
+            </option>
+            {resources.map((resource) => (
+              <option key={resource.id} value={resource.id}>
+                {resource.name}
+              </option>
+            ))}
           </select>
           {isManager && (
             <button className="maintenance-btn" title="Gestionare mentenanță">
@@ -346,10 +369,19 @@ export default function Calendar({
           )}
         </div>
       </div>
+      {resourcesError && (
+        <div className="calendar-error" role="alert">
+          {resourcesError}
+        </div>
+      )}
       {error && <div className="calendar-error">{error}</div>}
       {!selectedResource ? (
         <div className="calendar-empty">
-          <p>Selectează o resursă pentru a vedea disponibilitatea.</p>
+          <p>
+            {resources.length === 0 && !resourcesLoading
+              ? 'Nu există resurse disponibile în catalog.'
+              : 'Selectează o resursă pentru a vedea disponibilitatea.'}
+          </p>
         </div>
       ) : (
         <>
@@ -387,12 +419,6 @@ export default function Calendar({
       )}
     </div>
   );
-}
-
-// Resources for the selector – populated by the parent page via a module-level callback.
-let allResources: Resource[] = [];
-export function setCalendarResources(resources: Resource[]) {
-  allResources = resources;
 }
 
 function DayView({

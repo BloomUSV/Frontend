@@ -25,6 +25,12 @@ type AuthContextValue = {
 
   login: (email: string, password: string) => Promise<void>;
 
+  register: (
+    fullName: string,
+    email: string,
+    password: string,
+  ) => Promise<void>;
+
   logout: () => Promise<void>;
 };
 
@@ -67,6 +73,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(result.user);
   }, []);
 
+  const handleRegister = useCallback(
+    async (fullName: string, email: string, password: string) => {
+      setError(null);
+      await authService.register(fullName, email, password);
+      const result = await authService.login(email, password);
+      setUser(result.user);
+    },
+    [],
+  );
+
   const handleLogout = useCallback(async () => {
     try {
       await authService.logout();
@@ -87,6 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         error,
         login: handleLogin,
+        register: handleRegister,
         logout: handleLogout,
       }}
     >

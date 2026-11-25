@@ -30,7 +30,6 @@ import {
 import { listUsers, updateUser } from './services/userService';
 import type { AuthUser, Resource, ResourceType } from './types/resource';
 import Calendar from './components/Calendar';
-import { setCalendarResources } from './components/Calendar';
 import './components/ApiAlert.css';
 
 const ResourceManagement = lazy(
@@ -218,7 +217,6 @@ const nav: {
     page: 'feedback',
     label: 'Feedback',
     icon: 'message',
-    
   },
   {
     page: 'admin',
@@ -883,6 +881,7 @@ function Reservations({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editStart, setEditStart] = useState('');
   const [editEnd, setEditEnd] = useState('');
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const minDateTime = getCurrentDateTimeMinimum();
@@ -908,6 +907,27 @@ function Reservations({
       setError(
         getApiErrorMessage(requestError, 'Nu am putut anula rezervarea'),
       );
+    }
+  }
+  async function review(id: string, status: 'confirmed' | 'rejected') {
+    setError(null);
+    setReviewingId(id);
+    try {
+      const updated = await reviewReservation(id, status);
+      setReservations((items) =>
+        items.map((item) => (item.id === id ? updated : item)),
+      );
+    } catch (requestError) {
+      setError(
+        getApiErrorMessage(
+          requestError,
+          status === 'confirmed'
+            ? 'Rezervarea nu a putut fi confirmată.'
+            : 'Rezervarea nu a putut fi respinsă.',
+        ),
+      );
+    } finally {
+      setReviewingId(null);
     }
   }
   function toLocalInput(value: string) {
@@ -1036,32 +1056,18 @@ function Reservations({
                 <button
                   className="primary"
                   type="button"
-                  onClick={async () => {
-                    await reviewReservation(reservation.id, 'confirmed');
-                    setReservations((items) =>
-                      items.map((item) =>
-                        item.id === reservation.id
-                          ? { ...item, status: 'confirmed' }
-                          : item,
-                      ),
-                    );
-                  }}
+                  disabled={reviewingId === reservation.id}
+                  onClick={() => review(reservation.id, 'confirmed')}
                 >
-                  Confirmă
+                  {reviewingId === reservation.id
+                    ? 'Se procesează...'
+                    : 'Confirmă'}
                 </button>
                 <button
                   className="outline"
                   type="button"
-                  onClick={async () => {
-                    await reviewReservation(reservation.id, 'rejected');
-                    setReservations((items) =>
-                      items.map((item) =>
-                        item.id === reservation.id
-                          ? { ...item, status: 'rejected' }
-                          : item,
-                      ),
-                    );
-                  }}
+                  disabled={reviewingId === reservation.id}
+                  onClick={() => review(reservation.id, 'rejected')}
                 >
                   Respinge
                 </button>
@@ -2047,13 +2053,22 @@ function BookingModal({
 
 function Login({
   onLogin,
+  onRegister,
   initialError,
 }: {
   onLogin: (email: string, password: string) => Promise<void>;
+  onRegister: (
+    fullName: string,
+    email: string,
+    password: string,
+  ) => Promise<void>;
   initialError: string | null;
 }) {
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(initialError);
   const [submitting, setSubmitting] = useState(false);
 
@@ -2062,12 +2077,22 @@ function Login({
     setSubmitting(true);
     setError(null);
     try {
-      await onLogin(email, password);
+      if (isRegistering) {
+        if (password !== confirmPassword) {
+          setError('Parolele nu coincid.');
+          return;
+        }
+        await onRegister(fullName, email, password);
+      } else {
+        await onLogin(email, password);
+      }
     } catch (requestError: unknown) {
       setError(
         getApiErrorMessage(
           requestError,
-          'Autentificarea nu a reușit. Încearcă din nou.',
+          isRegistering
+            ? 'Înregistrarea nu a reușit. Încearcă din nou.'
+            : 'Autentificarea nu a reușit. Încearcă din nou.',
         ),
       );
     } finally {
@@ -2103,9 +2128,26 @@ function Login({
         </div>
       </div>
       <form className="login-card" onSubmit={handleSubmit}>
-        <h2>Bine ai revenit</h2>
-        <p>Autentifică-te folosind contul instituțional USV.</p>
+        <h2>{isRegistering ? 'Creează un cont' : 'Bine ai revenit'}</h2>
+        <p>
+          {isRegistering
+            ? 'Înregistrează-te pentru a rezerva resursele universității.'
+            : 'Autentifică-te folosind contul instituțional USV.'}
+        </p>
         {error && <ApiAlert>{error}</ApiAlert>}
+        {isRegistering && (
+          <label>
+            Nume complet
+            <input
+              type="text"
+              autoComplete="name"
+              required
+              maxLength={200}
+              value={fullName}
+              onChange={(event) => setFullName(event.target.value)}
+            />
+          </label>
+        )}
         <label>
           Adresă de e-mail
           <input
@@ -2120,18 +2162,61 @@ function Login({
           Parolă
           <input
             type="password"
-            autoComplete="current-password"
+            autoComplete={isRegistering ? 'new-password' : 'current-password'}
             required
+            minLength={isRegistering ? 12 : undefined}
+            maxLength={isRegistering ? 72 : undefined}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
         </label>
-        <div className="login-options">
-          <span>Conturile manager și administrator pot gestiona resurse.</span>
-        </div>
+        {isRegistering && (
+          <small className="auth-password-hint">
+            Folosește o parolă de cel puțin 12 caractere.
+          </small>
+        )}
+        {isRegistering && (
+          <label>
+            Confirmă parola
+            <input
+              type="password"
+              autoComplete="new-password"
+              required
+              minLength={12}
+              maxLength={72}
+              value={confirmPassword}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+            />
+          </label>
+        )}
+        {!isRegistering && (
+          <div className="login-options">
+            <span>
+              Conturile manager și administrator pot gestiona resurse.
+            </span>
+          </div>
+        )}
         <button className="primary full" disabled={submitting}>
-          {submitting ? 'Se autentifică...' : 'Autentificare'}
+          {submitting
+            ? isRegistering
+              ? 'Se creează contul...'
+              : 'Se autentifică...'
+            : isRegistering
+              ? 'Creează contul'
+              : 'Autentificare'}
         </button>
+        <div className="auth-mode-switch">
+          {isRegistering ? 'Ai deja un cont?' : 'Nu ai încă un cont?'}
+          <button
+            type="button"
+            onClick={() => {
+              setIsRegistering(!isRegistering);
+              setError(null);
+            }}
+          >
+            {isRegistering ? 'Autentifică-te' : 'Înregistrează-te'}
+          </button>
+        </div>
         <small>Acces securizat pentru comunitatea academică USV.</small>
       </form>
     </div>
@@ -2163,7 +2248,7 @@ function Logo() {
 }
 
 function Application() {
-  const { user, isLoading, error, login, logout } = useAuth();
+  const { user, isLoading, error, login, register, logout } = useAuth();
   const [page, setPage] = useState<Page>('dashboard');
   const [booking, setBooking] = useState(false);
   const [bookingPreset, setBookingPreset] = useState<{
@@ -2171,10 +2256,11 @@ function Application() {
     startsAt: string;
     endsAt: string;
   } | null>(null);
-  const { resources: calendarResources } = useResourceList({ pageSize: 100 });
-  useEffect(() => {
-    setCalendarResources(calendarResources);
-  }, [calendarResources]);
+  const {
+    resources: calendarResources,
+    loading: calendarResourcesLoading,
+    error: calendarResourcesError,
+  } = useResourceList({ pageSize: 100 });
   const [selectedResourceId, setSelectedResourceId] = useState<string | null>(
     null,
   );
@@ -2203,6 +2289,7 @@ function Application() {
           await login(email, password);
           setPage('dashboard');
         }}
+        onRegister={register}
         initialError={error}
       />
     );
@@ -2305,20 +2392,22 @@ function Application() {
         )}{' '}
         {currentPage === 'calendar' && (
           <Calendar
+            resources={calendarResources}
+            resourcesLoading={calendarResourcesLoading}
+            resourcesError={calendarResourcesError}
             onBook={(preset) => {
               if (user.role === 'user') {
                 setBookingPreset(preset ?? null);
                 setBooking(true);
               }
             }}
-            onSelectResource={handleSelectResource}
             userRole={user.role}
           />
         )}{' '}
         {currentPage === 'bookings' && (
           <Reservations onBook={openBooking} role={user.role} />
         )}{' '}
-                {currentPage === 'feedback' && (
+        {currentPage === 'feedback' && (
           <Feedback onBook={openBooking} role={user.role} />
         )}{' '}
         {currentPage === 'waitlist' && (

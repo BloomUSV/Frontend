@@ -1329,6 +1329,28 @@ textarea {
   font-size: 12px;
   color: var(--muted);
 }
+.auth-mode-switch {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+  margin-top: 17px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.auth-mode-switch button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--teal);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.auth-mode-switch button:hover {
+  text-decoration: underline;
+}
 .login-options {
   display: flex;
   justify-content: space-between;
@@ -1351,6 +1373,12 @@ textarea {
   margin-top: 16px;
   color: #8a95a5;
   font-size: 9px;
+}
+.login-card > .auth-password-hint {
+  margin: 6px 0 0;
+  color: var(--muted);
+  text-align: left;
+  font-size: 10px;
 }
 @media (max-width: 1050px) {
   aside {
